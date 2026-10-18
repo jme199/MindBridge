@@ -1,5 +1,8 @@
 import json
 
+import logging
+from collections import Counter
+
 from services.sciencepal_client import run_agent
 
 
@@ -129,6 +132,77 @@ def extract_agent_json(events):
     response_text = "".join(chunks).strip()
 
     if not response_text:
+
+        # Summarize event types without logging message content
+        event_types = Counter(
+            str(event.get("type"))
+            for event in events
+            if isinstance(event, dict)
+        )
+
+        # Inspect the structure of up to three assistant events
+        assistant_events = [
+            event
+            for event in events
+            if isinstance(event, dict)
+            and event.get("type") == "assistant"
+        ]
+
+        sample_events = (
+            assistant_events[:3]
+            if assistant_events
+            else events[:3]
+        )
+
+        event_shapes = []
+
+        for event in sample_events:
+
+            if not isinstance(event, dict):
+                continue
+
+            raw_content = event.get("content")
+            inner_message = None
+
+            if isinstance(raw_content, str):
+
+                try:
+                    inner_message = json.loads(raw_content)
+                except json.JSONDecodeError:
+                    pass
+
+            elif isinstance(raw_content, dict):
+                inner_message = raw_content
+
+            metadata = (
+                inner_message.get("metadata", {})
+                if isinstance(inner_message, dict)
+                else {}
+            )
+
+            event_shapes.append({
+                "type": event.get("type"),
+                "content_type": type(raw_content).__name__,
+                "inner_role": (
+                    inner_message.get("role")
+                    if isinstance(inner_message, dict)
+                    else None
+                ),
+                "stream_status": (
+                    metadata.get("stream_status")
+                    if isinstance(metadata, dict)
+                    else None
+                ),
+            })
+
+        logging.error(
+            "SCIENCEPAL_STREAM_DIAGNOSTIC: "
+            "event_count=%s, event_types=%s, samples=%s",
+            len(events),
+            dict(event_types),
+            event_shapes,
+        )
+
         raise ValueError(
             "No assistant JSON response was found."
         )
