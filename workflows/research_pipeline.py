@@ -131,6 +131,103 @@ def extract_agent_json(events):
 
     response_text = "".join(chunks).strip()
 
+    # -----------------------------------------------------
+    # Fallback: Parse assistant events without chunk metadata
+    # -----------------------------------------------------
+
+    if not response_text:
+
+        assistant_segments = []
+        current_parts = []
+
+        for event in events:
+
+            if not isinstance(event, dict):
+                continue
+
+            # End of an assistant response
+            if event.get("type") == "assistant_response_end":
+
+                if current_parts:
+                    assistant_segments.append(
+                        "".join(current_parts)
+                    )
+                    current_parts = []
+
+                continue
+
+            if event.get("type") != "assistant":
+                continue
+
+            raw_content = event.get("content")
+
+            try:
+                message = (
+                    json.loads(raw_content)
+                    if isinstance(raw_content, str)
+                    else raw_content
+                )
+
+            except (json.JSONDecodeError, TypeError):
+                continue
+
+            if not isinstance(message, dict):
+                continue
+
+            if message.get("role") != "assistant":
+                continue
+
+            content = message.get("content")
+
+            if isinstance(content, str):
+                current_parts.append(content)
+
+        # Preserve the final response if no end event was emitted
+        if current_parts:
+            assistant_segments.append(
+                "".join(current_parts)
+            )
+
+        # Check the most recent complete assistant response first
+        for candidate in reversed(assistant_segments):
+
+            candidate = candidate.strip()
+
+            # Remove optional Markdown fences
+            if candidate.startswith("```"):
+
+                lines = candidate.splitlines()
+
+                if (
+                    len(lines) >= 3
+                    and lines[0].strip().lower()
+                    in ("```", "```json")
+                    and lines[-1].strip() == "```"
+                ):
+                    candidate = "\n".join(
+                        lines[1:-1]
+                    ).strip()
+
+            try:
+                parsed = json.loads(candidate)
+
+            except json.JSONDecodeError:
+                continue
+
+            if not isinstance(parsed, dict):
+                continue
+
+            # Accept only the expected structured Agent outputs
+            if any(
+                key in parsed
+                for key in (
+                    "studies",
+                    "verified_studies",
+                    "papers",
+                )
+            ):
+                return parsed
+
     if not response_text:
 
         # Summarize event types without logging message content

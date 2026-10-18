@@ -333,5 +333,41 @@ class TestResearchPipeline(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, RESEARCH_DATA)
 
+    def test_stream_without_chunk_metadata(self):
+        """Test real-style events without stream_status."""
+
+        json_text = json.dumps(
+            RESEARCH_DATA,
+            ensure_ascii=False,
+        )
+
+        midpoint = len(json_text) // 2
+
+        def make_event(content):
+
+            return {
+                "type": "assistant",
+                "content": json.dumps({
+                    "role": "assistant",
+                    "content": content,
+                    "metadata": {},
+                }),
+            }
+
+        events = [
+            make_event("Intermediate assistant response."),
+
+            {"type": "assistant_response_end"},
+
+            make_event(json_text[:midpoint]),
+            make_event(json_text[midpoint:]),
+
+            {"type": "assistant_response_end"},
+        ]
+
+        result = extract_agent_json(events)
+
+        self.assertEqual(result, RESEARCH_DATA)
+
 if __name__ == "__main__":
     unittest.main()
