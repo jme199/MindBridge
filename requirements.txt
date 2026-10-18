@@ -1,1 +1,2 @@
 streamlit==1.65.0
+sciencepal-sdk @ https://sciencepal.ai/downloads/sdk/sciencepal_sdk-0.2.1-py3-none-any.whl

@@ -16,3 +16,6 @@ __pycache__/
 
 # macOS files
 .DS_Store
+
+# Local Agent execution records
+.local_runs/

@@ -1,4 +1,6 @@
+import asyncio
 import streamlit as st
+
 from scoring import calculate_gad7
 
 from research_results import (
@@ -6,13 +8,23 @@ from research_results import (
     render_research_results
 )
 
+from workflows.research_pipeline import run_research_pipeline
+from workflows.evidence_validation import validate_research_evidence
+
 
 # Clear research request and input widgets
 def clear_research_request():
+
     st.session_state.pop("research_request", None)
     st.session_state.pop("research_status", None)
     st.session_state.pop("show_demo_results", None)
 
+    # Clear Multi-Agent workflow results
+    st.session_state.pop("research_pipeline_result", None)
+    st.session_state.pop("research_error", None)
+    st.session_state.pop("research_live_consent", None)
+
+    # Reset input widgets
     st.session_state.research_question = ""
     st.session_state.research_topic = "Select a topic"
 
@@ -970,12 +982,18 @@ elif st.session_state.page == "research":
         key="research_submit"
     ):
 
-        if not research_question.strip() and selected_topic == "Select a topic":
+        if (
+            not research_question.strip()
+            and selected_topic == "Select a topic"
+        ):
+
             st.warning(
                 "Please enter a research question or select a topic."
             )
 
         else:
+
+            # Save the research request
             st.session_state.research_request = {
                 "question": research_question.strip(),
                 "topic": (
@@ -985,13 +1003,33 @@ elif st.session_state.page == "research":
                 )
             }
 
+            # Reset previous results
+            st.session_state.pop(
+                "research_pipeline_result", None
+            )
+
+            st.session_state.pop(
+                "research_error", None
+            )
+
+            st.session_state.pop(
+                "research_live_consent", None
+            )
+
+            # Prepare request without calling the API
             st.session_state.research_status = "pending"
 
     # -----------------------------------------------------
     # Research Status
     # -----------------------------------------------------
 
-    if st.session_state.get("research_status") == "pending":
+    if st.session_state.get("research_status") in (
+        "pending",
+        "completed",
+        "no_evidence",
+        "pending_or_failed",
+        "error"
+    ):
 
         st.divider()
 
@@ -1006,23 +1044,535 @@ elif st.session_state.page == "research":
         if request["topic"]:
             st.write(f"**Selected topic:** {request['topic']}")
 
-        st.warning(
-            "SciencePal Agent API integration is not yet active. "
-            "Your request has been prepared locally but has not "
-            "been sent to SciencePal."
+        # -----------------------------------------------------
+        # Multi-Agent Workflow Execution
+        # -----------------------------------------------------
+
+        status = st.session_state.get("research_status")
+
+        if status == "pending":
+
+            st.info(
+                "Your research request is ready. "
+                "No SciencePal API call has been made yet."
+            )
+
+            st.subheader("Multi-Agent Research Workflow")
+
+            st.write("1. Research Agent — Discover relevant studies.")
+            st.write("2. Verification Agent — Check research evidence.")
+            st.write("3. Explanation Agent — Generate the final report.")
+
+            st.checkbox(
+                "I understand that my research question will "
+                "be sent to SciencePal for processing. "
+                "I will not include sensitive personal information.",
+                key="research_live_consent"
+            )
+
+            if st.button(
+                "🚀 Run Live Research",
+                key="research_run_live",
+                type="primary",
+                use_container_width=True,
+                disabled=not st.session_state.get(
+                    "research_live_consent", False
+                )
+            ):
+
+                try:
+
+                    api_key = st.secrets.get(
+                        "SCIENCEPAL_API_KEY"
+                    )
+
+                    if not api_key:
+                        raise ValueError(
+                            "SciencePal API Key is not configured."
+                        )
+
+                    request = st.session_state.research_request
+
+                    # Construct the Agent prompt
+                    prompt = request["question"]
+
+                    if not prompt:
+                        prompt = (
+                            "Review scientific research evidence "
+                            f"related to {request['topic']}."
+                        )
+
+                    elif request["topic"]:
+                        prompt += (
+                            f"\nResearch topic: {request['topic']}"
+                        )
+
+                    # Mark workflow as running
+                    st.session_state.research_status = "running"
+
+                    # -----------------------------------------------------
+                    # Live Multi-Agent Progress
+                    # -----------------------------------------------------
+
+                    with st.status(
+                        "Starting Multi-Agent Research Workflow...",
+                        expanded=True
+                    ) as status_box:
+
+                        # Agent display names
+                        agent_names = {
+                            "research": "Research Agent",
+                            "verification": "Verification Agent",
+                            "explanation": "Explanation Agent",
+                        }
+
+                        # Initial Agent statuses
+                        agent_states = {
+                            "research": "Not Started",
+                            "verification": "Not Started",
+                            "explanation": "Not Started",
+                        }
+
+                        # Create a placeholder for the status table
+                        progress_placeholder = st.empty()
+
+                        def render_progress():
+                            """
+                            Update the Agent status table.
+                            """
+
+                            progress_data = [
+                                {
+                                    "Agent": agent_names[role],
+                                    "Status": agent_states[role],
+                                }
+                                for role in agent_names
+                            ]
+
+                            progress_placeholder.table(
+                                progress_data
+                            )
+
+                        # Display initial statuses
+                        render_progress()
+
+                        # Progress callback
+                        def update_progress(role, status):
+                            """
+                            Receive progress updates from
+                            the Multi-Agent Orchestrator.
+                            """
+
+                            if role not in agent_states:
+                                return
+
+                            agent_states[role] = status
+
+                            # Refresh the status table
+                            render_progress()
+
+                            # Update the progress message
+                            status_box.update(
+                                label=(
+                                    f"{agent_names[role]}: "
+                                    f"{status}"
+                                ),
+                                state="running",
+                                expanded=True
+                            )
+
+                        # Execute the Multi-Agent Workflow
+                        result = asyncio.run(
+                            run_research_pipeline(
+                                question=prompt,
+                                api_key=api_key,
+                                progress_callback=update_progress
+                            )
+                        )
+
+                    # Update final workflow status
+                    if result.get("status") == "completed":
+
+                        status_box.update(
+                            label="Multi-Agent Workflow Completed",
+                            state="complete",
+                            expanded=False
+                        )
+
+                    elif result.get("status") == "no_evidence":
+
+                        status_box.update(
+                            label="Research Completed: No Evidence Found",
+                            state="complete",
+                            expanded=False
+                        )
+
+                    else:
+
+                        status_box.update(
+                            label="Workflow Paused or Did Not Complete",
+                            state="error",
+                            expanded=True
+                        )
+
+                    # Save the pipeline result
+                    st.session_state.research_pipeline_result = result
+
+                    # Update research status
+                    st.session_state.research_status = result.get(
+                        "status", "error"
+                    )
+
+                except Exception as error:
+
+                    st.session_state.research_status = "error"
+
+                    # Store the error category without exposing
+                    # sensitive API information.
+                    st.session_state.research_error = (
+                        type(error).__name__
+                    )
+
+                st.rerun()
+
+        # -----------------------------------------------------
+        # Completed Workflow
+        # -----------------------------------------------------
+
+        elif status == "completed":
+
+            st.success(
+                "The Multi-Agent Research Workflow has completed."
+            )
+
+            st.write(
+                "Research, verification and explanation results "
+                "have been received."
+            )
+
+            st.caption(
+                "The final evidence report will be displayed "
+                "after additional output validation is implemented."
+            )
+
+        # -----------------------------------------------------
+        # No Evidence
+        # -----------------------------------------------------
+
+        elif status == "no_evidence":
+
+            st.info(
+                "The Research Agent did not return studies "
+                "for the next verification stage."
+            )
+
+        # -----------------------------------------------------
+        # Incomplete or Failed Workflow
+        # -----------------------------------------------------
+
+        elif status == "pending_or_failed":
+
+            result = st.session_state.get(
+                "research_pipeline_result", {}
+            )
+
+            failed_stage = result.get(
+                "stage", "unknown"
+            )
+
+            st.warning(
+                f"The workflow did not complete at "
+                f"the {failed_stage} stage."
+            )
+
+        # -----------------------------------------------------
+        # API or Processing Error
+        # -----------------------------------------------------
+
+        elif status == "error":
+
+            error_type = st.session_state.get(
+                "research_error", "UnknownError"
+            )
+
+            st.error(
+                "The research workflow encountered an error. "
+                f"Error type: {error_type}."
+            )
+
+        # -----------------------------------------------------
+        # Agent Execution Status Dashboard
+        # -----------------------------------------------------
+
+        pipeline_result = st.session_state.get(
+            "research_pipeline_result"
         )
 
-        st.subheader("Planned Research Workflow")
+        if pipeline_result:
 
-        st.write("1. Search relevant peer-reviewed literature.")
-        st.write("2. Verify publication details and source links.")
-        st.write("3. Extract research findings and limitations.")
-        st.write("4. Present evidence-grounded educational information.")
+            st.divider()
 
-        st.caption(
-            "These steps describe the planned workflow; "
-            "they have not been executed for this request."
-        )
+            st.subheader("Multi-Agent Execution Status")
+
+            # Retrieve Agent run records
+            run_history = pipeline_result.get("runs", [])
+
+            run_statuses = {
+                run["role"]: run["status"]
+                for run in run_history
+            }
+
+            # Define Agent execution order
+            agent_stages = [
+                ("research", "Research Agent"),
+                ("verification", "Verification Agent"),
+                ("explanation", "Explanation Agent"),
+            ]
+
+            # Convert execution status into readable labels
+            status_labels = {
+                "completed": "✅ Completed",
+                "running": "⏳ Running",
+                "asked": "⏸️ Waiting for Input",
+                "failed": "❌ Failed",
+                "stopped": "⏹️ Stopped",
+                "timed_out": "⌛ Timed Out",
+            }
+
+            status_data = []
+
+            for role, agent_name in agent_stages:
+
+                agent_status = run_statuses.get(
+                    role, "not_started"
+                )
+
+                display_status = status_labels.get(
+                    agent_status,
+                    "⚪ Not Started"
+                    if agent_status == "not_started"
+                    else f"⚠️ {agent_status}"
+                )
+
+                status_data.append({
+                    "Agent": agent_name,
+                    "Status": display_status
+                })
+
+            # Display Agent status table
+            st.table(status_data)
+
+            st.caption(
+                "Completed means the Agent run finished. "
+                "It does not guarantee that the scientific "
+                "evidence or citations have been independently "
+                "validated."
+            )
+
+        # -----------------------------------------------------
+        # Live Research Results
+        # -----------------------------------------------------
+
+        if st.session_state.get("research_status") == "completed":
+
+            pipeline_result = st.session_state.get(
+                "research_pipeline_result"
+            ) or {}
+
+            # Extract Explanation Agent output
+            report = pipeline_result.get("result")
+
+            if not isinstance(report, dict):
+
+                st.error(
+                    "The Explanation Agent did not return "
+                    "a valid research report."
+                )
+
+            elif (
+                not isinstance(report.get("summary"), str)
+                or not report["summary"].strip()
+                or not isinstance(report.get("papers"), list)
+                or not all(
+                    isinstance(paper, dict)
+                    for paper in report["papers"]
+                )
+            ):
+
+                st.error(
+                    "The research report is incomplete "
+                    "or has an invalid structure."
+                )
+
+            else:
+
+                st.warning(
+                    "This report was generated by AI Agents. "
+                    "Individual research claims, publication "
+                    "details and citations require independent "
+                    "verification before being relied upon."
+                )
+
+                # Prepare data for the existing dashboard
+                display_report = report.copy()
+
+                display_report["status"] = "completed"
+
+                support = report.get("support", [])
+
+                display_report["support"] = (
+                    [
+                        item
+                        for item in support
+                        if isinstance(item, str)
+                    ]
+                    if isinstance(support, list)
+                    else []
+                )
+
+                # -----------------------------------------------------
+                # Evidence Validation
+                # -----------------------------------------------------
+
+                try:
+
+                    evidence_audit = validate_research_evidence(
+                        pipeline_result
+                    )
+
+                except (ValueError, TypeError, AttributeError):
+
+                    st.error(
+                        "Evidence cross-check could not be completed. "
+                        "The research report has not been displayed."
+                    )
+
+                else:
+
+                    st.divider()
+
+                    st.subheader("Evidence Cross-Check")
+
+                    st.info(
+                        "This check compares study IDs across "
+                        "the Verification and Explanation Agents. "
+                        "It does not independently verify DOI records, "
+                        "publication metadata or research claims."
+                    )
+
+                    # ---------------------------------------------
+                    # Evidence Summary
+                    # ---------------------------------------------
+
+                    st.write(
+                        "**Total References:** "
+                        f"{evidence_audit['total_papers']}"
+                    )
+
+                    st.write(
+                        "**References marked verified by Agent:** "
+                        f"{evidence_audit['agent_verified_papers']}"
+                    )
+
+                    # ---------------------------------------------
+                    # Paper Verification Status
+                    # ---------------------------------------------
+
+                    evidence_records = evidence_audit.get(
+                        "evidence_records", []
+                    )
+
+                    if evidence_records:
+
+                        evidence_table = []
+
+                        for record in evidence_records:
+
+                            verification_status = record.get(
+                                "verification_status"
+                            )
+
+                            if (
+                                verification_status
+                                == "agent_reported_verified"
+                            ):
+
+                                status_text = (
+                                    "Agent-reported metadata verified"
+                                )
+
+                            else:
+
+                                status_text = "Not confirmed"
+
+                            evidence_table.append({
+                                "Study ID": (
+                                    record.get("study_id")
+                                    or "Not available"
+                                ),
+                                "Paper": record.get(
+                                    "title", "Untitled study"
+                                ),
+                                "Verification Status": status_text,
+                            })
+
+                        st.dataframe(
+                            evidence_table,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+
+                    else:
+
+                        st.info(
+                            "No research references are available "
+                            "for cross-checking."
+                        )
+
+                    # ---------------------------------------------
+                    # Claim Assessment
+                    # ---------------------------------------------
+
+                    claim_records = evidence_audit.get(
+                        "claim_records", []
+                    )
+
+                    if claim_records:
+
+                        st.subheader("Research Claim Assessment")
+
+                        claim_table = []
+
+                        for claim in claim_records:
+
+                            claim_table.append({
+                                "Claim ID": claim.get(
+                                    "claim_id", "Not available"
+                                ),
+                                "Agent-Reported Support": claim.get(
+                                    "support_status", "Not reported"
+                                ),
+                            })
+
+                        st.dataframe(
+                            claim_table,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+
+                    st.caption(
+                        "Verification statuses and claim assessments "
+                        "are generated by AI Agents. "
+                        "A matching study ID is not proof that "
+                        "a publication exists or supports a claim."
+                    )
+
+                    # ---------------------------------------------
+                    # Display Research Results
+                    # ---------------------------------------------
+
+                    render_research_results(display_report)
+
 
         st.button(
             "Clear Request",
