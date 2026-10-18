@@ -1,5 +1,8 @@
 import json
 
+import asyncio
+import time
+
 import logging
 from collections import Counter
 
@@ -227,8 +230,9 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
 
     Research -> Verification -> Explanation
 
-    Each stage must complete and return valid structured
-    data before the next Agent is called.
+    All three Agents share a total execution budget
+    of 170 seconds, with approximately 10 seconds
+    reserved for overhead.
     """
 
     if not question or not question.strip():
@@ -238,6 +242,21 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
         raise ValueError("SciencePal API Key is missing.")
 
     run_history = []
+
+    # -----------------------------------------------------
+    # Shared Pipeline Time Budget
+    # -----------------------------------------------------
+
+    PIPELINE_TIMEOUT = 170
+
+    deadline = time.monotonic() + PIPELINE_TIMEOUT
+
+    # Reserve time for subsequent Agents
+    reserved_after = {
+        "research": 90,
+        "verification": 40,
+        "explanation": 0,
+    }
 
     # -----------------------------------------------------
     # Progress Callback
@@ -252,16 +271,54 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
             progress_callback(role, status)
 
     # -----------------------------------------------------
+    # Shared Agent Execution Function
+    # -----------------------------------------------------
+
+    async def run_with_budget(role, prompt):
+        """
+        Execute an Agent using the remaining
+        shared pipeline time budget.
+        """
+
+        remaining = deadline - time.monotonic()
+
+        available = remaining - reserved_after[role]
+
+        # Do not start if insufficient time remains
+        if available <= 5:
+
+            notify_progress(role, "timed_out")
+
+            return {
+                "thread_id": None,
+                "run_id": None,
+                "status": "timed_out",
+                "events": [],
+            }
+
+        notify_progress(role, "running")
+
+        result = await run_agent(
+            api_key=api_key,
+            agent_id=AGENT_IDS[role],
+            prompt=prompt,
+            role=role,
+            max_wait_seconds=max(
+                1, int(available) - 5
+            ),
+        )
+
+        notify_progress(role, result["status"])
+
+        return result
+
+    # -----------------------------------------------------
     # Agent 1: Research
     # -----------------------------------------------------
 
-    notify_progress("research", "running")
-
-    research = await run_agent(
-        api_key=api_key,
-        agent_id=AGENT_IDS["research"],
-        prompt=question,
-        role="research",
+    research = await run_with_budget(
+        "research",
+        question,
     )
 
     run_history.append({
@@ -270,8 +327,6 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
         "run_id": research["run_id"],
         "status": research["status"],
     })
-
-    notify_progress("research", research["status"])
 
     if research["status"] != "completed":
         return {
@@ -307,13 +362,9 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
         + json.dumps(research_data, ensure_ascii=False)
     )
 
-    notify_progress("verification", "running")
-
-    verification = await run_agent(
-        api_key=api_key,
-        agent_id=AGENT_IDS["verification"],
-        prompt=verification_prompt,
-        role="verification",
+    verification = await run_with_budget(
+        "verification",
+        verification_prompt,
     )
 
     run_history.append({
@@ -322,8 +373,6 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
         "run_id": verification["run_id"],
         "status": verification["status"],
     })
-
-    notify_progress("verification", verification["status"])
 
     if verification["status"] != "completed":
         return {
@@ -361,13 +410,9 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
         + json.dumps(verification_data, ensure_ascii=False)
     )
 
-    notify_progress("explanation", "running")
-
-    explanation = await run_agent(
-        api_key=api_key,
-        agent_id=AGENT_IDS["explanation"],
-        prompt=explanation_prompt,
-        role="explanation",
+    explanation = await run_with_budget(
+        "explanation",
+        explanation_prompt,
     )
 
     run_history.append({
@@ -376,8 +421,6 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
         "run_id": explanation["run_id"],
         "status": explanation["status"],
     })
-
-    notify_progress("explanation", explanation["status"])
 
     if explanation["status"] != "completed":
         return {

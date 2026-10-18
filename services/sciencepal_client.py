@@ -42,15 +42,10 @@ async def run_agent(
     poll_interval=3,
 ):
     """
-    Execute a SciencePal Agent and wait for its final status.
+    Execute a SciencePal Agent with timeout protection.
 
-    Features:
-    - Save Thread ID and Run ID
-    - Collect streaming events
-    - Poll execution status
-    - Handle API errors
-    - Handle timeouts
-    - Attempt to stop timed-out runs
+    The timeout covers initiation, streaming, and polling.
+    On timeout or cancellation, attempt to stop the remote run.
     """
 
     if not api_key:
@@ -63,15 +58,13 @@ async def run_agent(
         raise ValueError("Agent prompt cannot be empty.")
 
     if max_wait_seconds <= 0 or poll_interval <= 0:
-        raise ValueError("Timeout and polling interval must be positive.")
+        raise ValueError(
+            "Timeout and polling interval must be positive."
+        )
 
     thread_id = None
     run_id = None
     events = []
-
-    # -----------------------------------------------------
-    # Initialize SciencePal Client
-    # -----------------------------------------------------
 
     async with SciencePal(
         api_key=api_key,
@@ -79,136 +72,112 @@ async def run_agent(
         timeout=120,
     ) as client:
 
-        try:
-
-            # -----------------------------------------------------
-            # Step 1: Initiate Agent
-            # -----------------------------------------------------
-
-            run = await client.runs.initiate(
-                agent_id=agent_id,
-                prompt=prompt,
-            )
-
-            thread_id = run.thread_id
-            run_id = run.agent_run_id
+        # Attempt to stop an unfinished remote run
+        async def request_stop(reason):
 
             if not run_id:
-                raise RuntimeError(
-                    f"{role} Agent did not create a valid Run ID."
+                return
+
+            stop_requested = False
+
+            try:
+                await asyncio.wait_for(
+                    client.runs.stop(run_id),
+                    timeout=5,
                 )
 
-            # Save identifiers immediately
+                stop_requested = True
+
+            except Exception:
+                pass
+
             save_run_record(
                 role,
                 agent_id,
                 thread_id,
                 run_id,
-                "initiated",
+                (
+                    f"{reason}_stop_requested"
+                    if stop_requested
+                    else f"{reason}_stop_unconfirmed"
+                ),
             )
 
-            # -----------------------------------------------------
-            # Step 2: Stream Events and Poll Status
-            # -----------------------------------------------------
+        try:
 
-            final_status = None
-            final_error = None
+            # ---------------------------------------------
+            # Shared timeout for the entire Agent execution
+            # ---------------------------------------------
 
-            try:
+            async with asyncio.timeout(max_wait_seconds):
 
-                async with asyncio.timeout(max_wait_seconds):
+                # Step 1: Initiate Agent
+                run = await client.runs.initiate(
+                    agent_id=agent_id,
+                    prompt=prompt,
+                )
 
-                    # Collect streaming events
-                    async for event in client.runs.stream(run_id):
+                thread_id = run.thread_id
+                run_id = run.agent_run_id
 
-                        events.append(
-                            event.model_dump(exclude_none=True)
-                        )
-
-                    # Poll until a terminal status is received
-                    terminal_statuses = {
-                        "completed",
-                        "failed",
-                        "stopped",
-                        "asked",
-                    }
-
-                    while True:
-
-                        result = await client.runs.get(run_id)
-
-                        status_value = getattr(
-                            result.status,
-                            "value",
-                            result.status,
-                        )
-
-                        final_status = str(status_value).lower()
-
-                        if final_status in terminal_statuses:
-
-                            error = getattr(result, "error", None)
-
-                            final_error = (
-                                str(error)
-                                if error is not None
-                                else None
-                            )
-
-                            break
-
-                        await asyncio.sleep(poll_interval)
-
-            # -----------------------------------------------------
-            # Step 3: Timeout Handling
-            # -----------------------------------------------------
-
-            except TimeoutError:
-
-                stop_requested = False
-
-                try:
-                    stop_requested = bool(
-                        await asyncio.wait_for(
-                            client.runs.stop(run_id),
-                            timeout=15,
-                        )
+                if not run_id:
+                    raise RuntimeError(
+                        f"{role} Agent did not create a valid Run ID."
                     )
-
-                except Exception:
-                    # Stop could not be confirmed.
-                    pass
 
                 save_run_record(
                     role,
                     agent_id,
                     thread_id,
                     run_id,
-                    (
-                        "timeout_stop_requested"
-                        if stop_requested
-                        else "timeout_stop_unconfirmed"
-                    ),
+                    "initiated",
                 )
 
-                return {
-                    "role": role,
-                    "agent_id": agent_id,
-                    "thread_id": thread_id,
-                    "run_id": run_id,
-                    "status": "timed_out",
-                    "error": (
-                        "The Agent exceeded the configured time limit. "
-                        "A stop was attempted, but the final server "
-                        "status has not been independently confirmed."
-                    ),
-                    "events": events,
+                # Step 2: Collect streaming events
+                async for event in client.runs.stream(run_id):
+
+                    events.append(
+                        event.model_dump(exclude_none=True)
+                    )
+
+                # Step 3: Poll final status
+                terminal_statuses = {
+                    "completed",
+                    "failed",
+                    "stopped",
+                    "asked",
                 }
 
-            # -----------------------------------------------------
-            # Step 4: Save Final Status
-            # -----------------------------------------------------
+                final_status = None
+                final_error = None
 
+                while True:
+
+                    result = await client.runs.get(run_id)
+
+                    status_value = getattr(
+                        result.status,
+                        "value",
+                        result.status,
+                    )
+
+                    final_status = str(status_value).lower()
+
+                    if final_status in terminal_statuses:
+
+                        error = getattr(result, "error", None)
+
+                        final_error = (
+                            str(error)
+                            if error is not None
+                            else None
+                        )
+
+                        break
+
+                    await asyncio.sleep(poll_interval)
+
+            # Step 4: Save completed execution
             save_run_record(
                 role,
                 agent_id,
@@ -216,10 +185,6 @@ async def run_agent(
                 run_id,
                 final_status,
             )
-
-            # -----------------------------------------------------
-            # Step 5: Return Results
-            # -----------------------------------------------------
 
             return {
                 "role": role,
@@ -231,13 +196,46 @@ async def run_agent(
                 "events": events,
             }
 
-        # -----------------------------------------------------
-        # Step 6: API Error Handling
-        # -----------------------------------------------------
+        # ---------------------------------------------
+        # Timeout
+        # ---------------------------------------------
+
+        except TimeoutError:
+
+            await request_stop("timeout")
+
+            return {
+                "role": role,
+                "agent_id": agent_id,
+                "thread_id": thread_id,
+                "run_id": run_id,
+                "status": "timed_out",
+                "error": (
+                    "Agent execution exceeded its time limit. "
+                    "Remote cancellation was attempted when "
+                    "a Run ID was available."
+                ),
+                "events": events,
+            }
+
+        # ---------------------------------------------
+        # External cancellation
+        # ---------------------------------------------
+
+        except asyncio.CancelledError:
+
+            await request_stop("cancelled")
+
+            raise
+
+        # ---------------------------------------------
+        # API errors
+        # ---------------------------------------------
 
         except Exception:
 
             if run_id:
+
                 save_run_record(
                     role,
                     agent_id,
