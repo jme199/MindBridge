@@ -300,6 +300,89 @@ def extract_agent_json(events):
             event_shapes,
         )
 
+        # -----------------------------------------------------
+        # Detailed Streaming Event Structure Diagnostic
+        # -----------------------------------------------------
+
+        def inspect_event_shape(event):
+
+            if not isinstance(event, dict):
+                return {"event_type": type(event).__name__}
+
+            raw_content = event.get("content")
+
+            try:
+                message = (
+                    json.loads(raw_content)
+                    if isinstance(raw_content, str)
+                    else raw_content
+                )
+
+            except (json.JSONDecodeError, TypeError):
+                message = None
+
+            inner_content = (
+                message.get("content")
+                if isinstance(message, dict)
+                else None
+            )
+
+            metadata = (
+                message.get("metadata")
+                if isinstance(message, dict)
+                else None
+            )
+
+            return {
+                "event_type": event.get("type"),
+                "event_keys": sorted(event.keys()),
+                "message_keys": (
+                    sorted(message.keys())
+                    if isinstance(message, dict)
+                    else []
+                ),
+                "inner_content_type": type(
+                    inner_content
+                ).__name__,
+                "inner_content_length": (
+                    len(inner_content)
+                    if isinstance(inner_content, (str, list, dict))
+                    else None
+                ),
+                "metadata_keys": (
+                    sorted(metadata.keys())
+                    if isinstance(metadata, dict)
+                    else []
+                ),
+            }
+
+        assistant_samples = [
+            event
+            for event in events
+            if isinstance(event, dict)
+            and event.get("type") == "assistant"
+        ]
+
+        end_samples = [
+            event
+            for event in events
+            if isinstance(event, dict)
+            and event.get("type") == "assistant_response_end"
+        ]
+
+        logging.error(
+            "SCIENCEPAL_EVENT_SHAPES: "
+            "assistant_samples=%s, end_samples=%s",
+            [
+                inspect_event_shape(event)
+                for event in assistant_samples[-8:]
+            ],
+            [
+                inspect_event_shape(event)
+                for event in end_samples[-4:]
+            ],
+        )
+
         raise ValueError(
             "No assistant JSON response was found."
         )
