@@ -22,412 +22,199 @@ AGENT_IDS = {
 # =========================================================
 
 def extract_agent_json(events):
-    """
-    Extract structured JSON from SciencePal streaming events.
+    expected_keys = {"studies", "verified_studies", "papers"}
 
-    Only assistant text chunks are collected.
-    Tool events and unrelated events are ignored.
+    def as_text(value):
+        """Read plain text or JSON-wrapped assistant text."""
 
-    Raises ValueError if the response is missing,
-    incomplete, or invalid.
-    """
+        if isinstance(value, dict):
 
-    chunks = []
+            if expected_keys.intersection(value):
+                return json.dumps(value, ensure_ascii=False)
 
-    # -----------------------------------------------------
-    # Step 1: Collect assistant text chunks
-    # -----------------------------------------------------
+            if value.get("role") not in (None, "assistant"):
+                return None
+
+            for key in ("content", "message", "text"):
+                if key in value:
+                    return as_text(value[key])
+
+            return None
+
+        if isinstance(value, list):
+
+            parts = [as_text(item) for item in value]
+
+            return "".join(
+                part for part in parts if part
+            ) or None
+
+        if not isinstance(value, str):
+            return None
+
+        try:
+            decoded = json.loads(value)
+
+        except json.JSONDecodeError:
+            return value
+
+        if isinstance(decoded, (dict, list)):
+
+            nested = as_text(decoded)
+
+            return nested if nested is not None else value
+
+        if isinstance(decoded, str):
+            return decoded
+
+        return value
+
+    def parse_response(text):
+        """Extract a complete structured JSON object."""
+
+        if not isinstance(text, str):
+            return None
+
+        text = text.strip()
+
+        # Remove Markdown JSON fences
+        if text.startswith("```") and text.endswith("```"):
+
+            lines = text.splitlines()
+
+            if (
+                len(lines) >= 3
+                and lines[-1].strip() == "```"
+            ):
+                text = "\n".join(lines[1:-1]).strip()
+
+        # First try parsing the complete response
+        try:
+            candidate = json.loads(text)
+
+        except json.JSONDecodeError:
+            candidate = None
+
+        if (
+            isinstance(candidate, dict)
+            and expected_keys.intersection(candidate)
+        ):
+            return candidate
+
+        # Handle explanatory text surrounding a JSON object
+        decoder = json.JSONDecoder()
+
+        for index, char in enumerate(text):
+
+            if char != "{":
+                continue
+
+            try:
+                candidate, _ = decoder.raw_decode(
+                    text, index
+                )
+
+            except json.JSONDecodeError:
+                continue
+
+            if (
+                isinstance(candidate, dict)
+                and expected_keys.intersection(candidate)
+            ):
+                return candidate
+
+        return None
+
+    # Collect assistant responses by field
+    segments = {
+        "content": [],
+        "message": [],
+    }
+
+    current = {
+        "content": [],
+        "message": [],
+    }
+
+    complete_candidates = []
 
     for event in events:
 
         if not isinstance(event, dict):
             continue
 
-        if event.get("type") != "assistant":
+        event_type = event.get("type")
+
+        if event_type not in (
+            "assistant",
+            "assistant_response_end",
+        ):
             continue
 
-        raw_content = event.get("content")
+        # Read both possible response fields
+        for field in ("message", "content"):
 
-        # Handle a complete JSON object returned directly
-        if isinstance(raw_content, str):
+            text = as_text(event.get(field))
 
-            try:
-                direct_result = json.loads(raw_content)
+            if not text:
+                continue
 
-            except json.JSONDecodeError:
-                direct_result = None
+            parsed = parse_response(text)
 
-            if (
-                isinstance(direct_result, dict)
-                and any(
-                    key in direct_result
-                    for key in (
-                        "studies",
-                        "verified_studies",
-                        "papers",
+            if parsed is not None:
+                complete_candidates.append(parsed)
+
+            current[field].append(text)
+
+        # Separate completed assistant responses
+        if event_type == "assistant_response_end":
+
+            for field in current:
+
+                if current[field]:
+
+                    segments[field].append(
+                        current[field]
                     )
-                )
-            ):
-                return direct_result
 
-        if isinstance(raw_content, dict):
-            message = raw_content
+                    current[field] = []
 
-        elif isinstance(raw_content, str):
-            try:
-                message = json.loads(raw_content)
-            except json.JSONDecodeError:
-                continue
+    # Preserve the last response
+    for field in current:
 
-        else:
-            continue
+        if current[field]:
+            segments[field].append(current[field])
 
-        if not isinstance(message, dict):
-            continue
+    def merge_parts(parts):
+        """Support cumulative snapshots and text chunks."""
 
-        if message.get("role") != "assistant":
-            continue
+        if len(parts) > 1 and all(
+            later.startswith(earlier)
+            for earlier, later in zip(parts, parts[1:])
+        ):
+            return parts[-1]
 
-        # Handle complete JSON inside an assistant message
-        inner_content = message.get("content")
+        return "".join(parts)
 
-        if isinstance(inner_content, str):
+    # Examine recent assistant responses first
+    for field in ("message", "content"):
 
-            try:
-                inner_result = json.loads(inner_content)
+        for parts in reversed(segments[field]):
 
-            except json.JSONDecodeError:
-                inner_result = None
+            response_text = merge_parts(parts)
 
-            if (
-                isinstance(inner_result, dict)
-                and any(
-                    key in inner_result
-                    for key in (
-                        "studies",
-                        "verified_studies",
-                        "papers",
-                    )
-                )
-            ):
-                return inner_result
+            parsed = parse_response(response_text)
 
-        metadata = message.get("metadata")
-
-        if not isinstance(metadata, dict):
-            continue
-
-        if metadata.get("stream_status") != "chunk":
-            continue
-
-        content = message.get("content")
-
-        if isinstance(content, str):
-            chunks.append(content)
-
-    # -----------------------------------------------------
-    # Step 2: Combine streaming chunks
-    # -----------------------------------------------------
-
-    response_text = "".join(chunks).strip()
-
-    # -----------------------------------------------------
-    # Fallback: Parse assistant events without chunk metadata
-    # -----------------------------------------------------
-
-    if not response_text:
-
-        assistant_segments = []
-        current_parts = []
-
-        for event in events:
-
-            if not isinstance(event, dict):
-                continue
-
-            # End of an assistant response
-            if event.get("type") == "assistant_response_end":
-
-                if current_parts:
-                    assistant_segments.append(
-                        "".join(current_parts)
-                    )
-                    current_parts = []
-
-                continue
-
-            if event.get("type") != "assistant":
-                continue
-
-            raw_content = event.get("content")
-
-            try:
-                message = (
-                    json.loads(raw_content)
-                    if isinstance(raw_content, str)
-                    else raw_content
-                )
-
-            except (json.JSONDecodeError, TypeError):
-                continue
-
-            if not isinstance(message, dict):
-                continue
-
-            if message.get("role") != "assistant":
-                continue
-
-            content = message.get("content")
-
-            if isinstance(content, str):
-                current_parts.append(content)
-
-        # Preserve the final response if no end event was emitted
-        if current_parts:
-            assistant_segments.append(
-                "".join(current_parts)
-            )
-
-        # Check the most recent complete assistant response first
-        for candidate in reversed(assistant_segments):
-
-            candidate = candidate.strip()
-
-            # Remove optional Markdown fences
-            if candidate.startswith("```"):
-
-                lines = candidate.splitlines()
-
-                if (
-                    len(lines) >= 3
-                    and lines[0].strip().lower()
-                    in ("```", "```json")
-                    and lines[-1].strip() == "```"
-                ):
-                    candidate = "\n".join(
-                        lines[1:-1]
-                    ).strip()
-
-            try:
-                parsed = json.loads(candidate)
-
-            except json.JSONDecodeError:
-                continue
-
-            if not isinstance(parsed, dict):
-                continue
-
-            # Accept only the expected structured Agent outputs
-            if any(
-                key in parsed
-                for key in (
-                    "studies",
-                    "verified_studies",
-                    "papers",
-                )
-            ):
+            if parsed is not None:
                 return parsed
 
-    if not response_text:
+    # Fall back to an individually complete response
+    if complete_candidates:
+        return complete_candidates[-1]
 
-        # Summarize event types without logging message content
-        event_types = Counter(
-            str(event.get("type"))
-            for event in events
-            if isinstance(event, dict)
-        )
-
-        # Inspect the structure of up to three assistant events
-        assistant_events = [
-            event
-            for event in events
-            if isinstance(event, dict)
-            and event.get("type") == "assistant"
-        ]
-
-        sample_events = (
-            assistant_events[:3]
-            if assistant_events
-            else events[:3]
-        )
-
-        event_shapes = []
-
-        for event in sample_events:
-
-            if not isinstance(event, dict):
-                continue
-
-            raw_content = event.get("content")
-            inner_message = None
-
-            if isinstance(raw_content, str):
-
-                try:
-                    inner_message = json.loads(raw_content)
-                except json.JSONDecodeError:
-                    pass
-
-            elif isinstance(raw_content, dict):
-                inner_message = raw_content
-
-            metadata = (
-                inner_message.get("metadata", {})
-                if isinstance(inner_message, dict)
-                else {}
-            )
-
-            event_shapes.append({
-                "type": event.get("type"),
-                "content_type": type(raw_content).__name__,
-                "inner_role": (
-                    inner_message.get("role")
-                    if isinstance(inner_message, dict)
-                    else None
-                ),
-                "stream_status": (
-                    metadata.get("stream_status")
-                    if isinstance(metadata, dict)
-                    else None
-                ),
-            })
-
-        logging.error(
-            "SCIENCEPAL_STREAM_DIAGNOSTIC: "
-            "event_count=%s, event_types=%s, samples=%s",
-            len(events),
-            dict(event_types),
-            event_shapes,
-        )
-
-        # -----------------------------------------------------
-        # Detailed Streaming Event Structure Diagnostic
-        # -----------------------------------------------------
-
-        def inspect_event_shape(event):
-
-            if not isinstance(event, dict):
-                return {"event_type": type(event).__name__}
-
-            raw_content = event.get("content")
-
-            try:
-                message = (
-                    json.loads(raw_content)
-                    if isinstance(raw_content, str)
-                    else raw_content
-                )
-
-            except (json.JSONDecodeError, TypeError):
-                message = None
-
-            inner_content = (
-                message.get("content")
-                if isinstance(message, dict)
-                else None
-            )
-
-            metadata = (
-                message.get("metadata")
-                if isinstance(message, dict)
-                else None
-            )
-
-            return {
-                "event_type": event.get("type"),
-                "event_keys": sorted(event.keys()),
-                "message_keys": (
-                    sorted(message.keys())
-                    if isinstance(message, dict)
-                    else []
-                ),
-                "inner_content_type": type(
-                    inner_content
-                ).__name__,
-                "inner_content_length": (
-                    len(inner_content)
-                    if isinstance(inner_content, (str, list, dict))
-                    else None
-                ),
-                "metadata_keys": (
-                    sorted(metadata.keys())
-                    if isinstance(metadata, dict)
-                    else []
-                ),
-            }
-
-        assistant_samples = [
-            event
-            for event in events
-            if isinstance(event, dict)
-            and event.get("type") == "assistant"
-        ]
-
-        end_samples = [
-            event
-            for event in events
-            if isinstance(event, dict)
-            and event.get("type") == "assistant_response_end"
-        ]
-
-        logging.error(
-            "SCIENCEPAL_EVENT_SHAPES: "
-            "assistant_samples=%s, end_samples=%s",
-            [
-                inspect_event_shape(event)
-                for event in assistant_samples[-8:]
-            ],
-            [
-                inspect_event_shape(event)
-                for event in end_samples[-4:]
-            ],
-        )
-
-        raise ValueError(
-            "No assistant JSON response was found."
-        )
-
-    # -----------------------------------------------------
-    # Step 3: Remove optional Markdown fences
-    # -----------------------------------------------------
-
-    if response_text.startswith("```"):
-
-        lines = response_text.splitlines()
-
-        if (
-            len(lines) < 3
-            or lines[0].strip().lower() not in ("```", "```json")
-            or lines[-1].strip() != "```"
-        ):
-            raise ValueError(
-                "Invalid Markdown JSON formatting."
-            )
-
-        response_text = "\n".join(lines[1:-1]).strip()
-
-    # -----------------------------------------------------
-    # Step 4: Parse JSON
-    # -----------------------------------------------------
-
-    try:
-        result = json.loads(response_text)
-
-    except json.JSONDecodeError as error:
-        raise ValueError(
-            "The Agent returned incomplete or invalid JSON."
-        ) from error
-
-    # -----------------------------------------------------
-    # Step 5: Validate JSON structure
-    # -----------------------------------------------------
-
-    if not isinstance(result, dict):
-        raise ValueError(
-            "Agent response must be a JSON object."
-        )
-
-    return result
+    raise ValueError(
+        "No complete structured assistant JSON response was found."
+    )
 
 
 # =========================================================
