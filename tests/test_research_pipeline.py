@@ -290,6 +290,48 @@ class TestResearchPipeline(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, RESEARCH_DATA)
 
+    def test_direct_json_response(self):
+        """Check direct JSON returned by an Agent."""
+
+        events = [
+            {
+                "type": "assistant",
+                "content": json.dumps(
+                    RESEARCH_DATA,
+                    ensure_ascii=False,
+                ),
+            }
+        ]
+
+        result = extract_agent_json(events)
+
+        self.assertEqual(result, RESEARCH_DATA)
+
+    def test_nested_json_response(self):
+        """Check complete JSON inside an assistant message."""
+
+        message = {
+            "role": "assistant",
+            "content": json.dumps(
+                RESEARCH_DATA,
+                ensure_ascii=False,
+            ),
+            "metadata": {},
+        }
+
+        events = [
+            {
+                "type": "assistant",
+                "content": json.dumps(
+                    message,
+                    ensure_ascii=False,
+                ),
+            }
+        ]
+
+        result = extract_agent_json(events)
+
+        self.assertEqual(result, RESEARCH_DATA)
 
 if __name__ == "__main__":
     unittest.main()

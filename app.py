@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import streamlit as st
 
 from scoring import calculate_gad7
@@ -364,28 +365,28 @@ if st.session_state.page == "home":
 
     # Emotional Support Card
     with col1:
-        
-    
+
+
         st.html("""
 <div class="feature-card">
     <div class="feature-icon">💬</div>
-    
+
     <div class="feature-title">
         Emotional Support
     </div>
-    
+
     <div class="feature-description">
         Share your thoughts in a supportive,
         non-judgmental space.
-    
+
         <br><br>
-    
+
         Choose whether you would like someone to listen,
         help you reflect, or explore coping strategies.
     </div>
 </div>
 """)
-    
+
         if st.button(
             "Start Support Chat →",
             key="emotional_button",
@@ -466,7 +467,7 @@ if st.session_state.page == "home":
         ):
             st.session_state.page = "research"
             st.rerun()
-    
+
     # -----------------------------------------------------
     # Footer
     # -----------------------------------------------------
@@ -1225,10 +1226,12 @@ elif st.session_state.page == "research":
 
                 except Exception as error:
 
+                    logging.exception(
+                        "MindBridge research pipeline failed"
+                    )
+
                     st.session_state.research_status = "error"
 
-                    # Store the error category without exposing
-                    # sensitive API information.
                     st.session_state.research_error = (
                         type(error).__name__
                     )
@@ -1666,4 +1669,4 @@ elif st.session_state.page == "emotional":
 
     if st.button("Clear Conversation", key="clear_chat"):
         st.session_state.chat_messages = []
-        st.rerun()        
+        st.rerun()

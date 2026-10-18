@@ -45,6 +45,28 @@ def extract_agent_json(events):
 
         raw_content = event.get("content")
 
+        # Handle a complete JSON object returned directly
+        if isinstance(raw_content, str):
+
+            try:
+                direct_result = json.loads(raw_content)
+
+            except json.JSONDecodeError:
+                direct_result = None
+
+            if (
+                isinstance(direct_result, dict)
+                and any(
+                    key in direct_result
+                    for key in (
+                        "studies",
+                        "verified_studies",
+                        "papers",
+                    )
+                )
+            ):
+                return direct_result
+
         if isinstance(raw_content, dict):
             message = raw_content
 
@@ -62,6 +84,30 @@ def extract_agent_json(events):
 
         if message.get("role") != "assistant":
             continue
+
+        # Handle complete JSON inside an assistant message
+        inner_content = message.get("content")
+
+        if isinstance(inner_content, str):
+
+            try:
+                inner_result = json.loads(inner_content)
+
+            except json.JSONDecodeError:
+                inner_result = None
+
+            if (
+                isinstance(inner_result, dict)
+                and any(
+                    key in inner_result
+                    for key in (
+                        "studies",
+                        "verified_studies",
+                        "papers",
+                    )
+                )
+            ):
+                return inner_result
 
         metadata = message.get("metadata")
 
