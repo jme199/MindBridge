@@ -314,6 +314,7 @@ with nav2:
 # 4. Home Page
 # =========================================================
 
+
 if st.session_state.page == "home":
 
     # -----------------------------------------------------
@@ -321,171 +322,268 @@ if st.session_state.page == "home":
     # -----------------------------------------------------
 
     st.html("""
-<div class="hero">
+    <div class="hero">
+        <div class="hero-badge">
+            ✦ AI4SCIENCE · MULTI-AGENT RESEARCH
+        </div>
 
-    <div class="hero-badge">
-        ✦ SCIENCE-POWERED MENTAL WELLNESS
+        <div class="hero-title">
+            Explore the Research.<br>
+            <span class="gradient-text">
+                Examine the Evidence.
+            </span>
+        </div>
+
+        <div class="hero-subtitle">
+            A multi-agent evidence verification system for
+            university mental health research.
+            Discover scientific studies, assess research
+            claims, and understand findings and limitations.
+        </div>
     </div>
-
-    <div class="hero-title">
-        Understand Your Mind.<br>
-        <span class="gradient-text">
-            Empower Your Well-being.
-        </span>
-    </div>
-
-    <div class="hero-subtitle">
-        A bridge between mental wellness and scientific evidence.
-        Explore structured self-assessment and research-grounded
-        support designed for university students.
-    </div>
-
-</div>
-""")
+    """)
 
     # -----------------------------------------------------
-    # Section Heading
+    # Research Question Entry
     # -----------------------------------------------------
 
     st.html("""
-<div class="section-title">
-    How can we support you?
-</div>
+    <div class="section-title" style="text-align:center;">
+        Explore a Research Question
+    </div>
+    <div class="section-subtitle" style="text-align:center;">
+        Start with a question about university students'
+        mental wellbeing.
+    </div>
+    """)
 
-<div class="section-subtitle">
-    Choose the path that best fits your needs.
-</div>
-""")
+    # Example question callback
+    def select_example(question):
+        st.session_state.home_research_question = question
+
+    examples = [
+        (
+            "Academic Stress",
+            "What evidence-based strategies help university "
+            "students manage academic stress?"
+        ),
+        (
+            "Loneliness",
+            "What does research say about reducing loneliness "
+            "among university students?"
+        ),
+        (
+            "Sleep & Anxiety",
+            "What is the relationship between sleep quality "
+            "and anxiety among university students?"
+        ),
+    ]
+
+    example_columns = st.columns(3)
+
+    for index, (label, question) in enumerate(examples):
+        with example_columns[index]:
+            st.button(
+                label,
+                key=f"home_example_{index}",
+                on_click=select_example,
+                args=(question,),
+                use_container_width=True,
+            )
+
+    with st.container(border=True):
+
+        home_question = st.text_area(
+            "Your Research Question",
+            placeholder=(
+                "Ask a scientific research question about "
+                "university students' mental wellbeing..."
+            ),
+            height=120,
+            key="home_research_question",
+        )
+
+        st.caption(
+            "Avoid entering personal identifiers or "
+            "sensitive mental health information."
+        )
+
+        if st.button(
+            "🔬 Explore Scientific Evidence →",
+            key="home_research_button",
+            type="primary",
+            use_container_width=True,
+        ):
+
+            question = home_question.strip()
+
+            if not question:
+                st.warning("Please enter a research question.")
+
+            else:
+                # Clear old results without calling SciencePal
+                clear_research_request()
+
+                # Populate existing Research Support workflow
+                st.session_state.research_question = question
+
+                st.session_state.research_request = {
+                    "question": question,
+                    "topic": None,
+                }
+
+                st.session_state.research_status = "pending"
+
+                st.session_state.page = "research"
+                st.rerun()
 
     # -----------------------------------------------------
-    # Feature Cards
+    # Multi-Agent Workflow
     # -----------------------------------------------------
 
-    col1, col2, col3 = st.columns(3, gap="medium")
-
-    # Emotional Support Card
-    with col1:
-
-
-        st.html("""
-<div class="feature-card">
-    <div class="feature-icon">💬</div>
-
-    <div class="feature-title">
-        Emotional Support
+    st.html("""
+    <div class="section-title"
+         style="text-align:center; margin-top:45px;">
+        How MindBridge Works
     </div>
 
-    <div class="feature-description">
-        Share your thoughts in a supportive,
-        non-judgmental space.
-
-        <br><br>
-
-        Choose whether you would like someone to listen,
-        help you reflect, or explore coping strategies.
+    <div class="section-subtitle" style="text-align:center;">
+        Three specialized AI agents working together
+        to investigate one research question.
     </div>
-</div>
-""")
+    """)
 
-        if st.button(
-            "Start Support Chat →",
-            key="emotional_button",
-            type="primary",
-            use_container_width=True
-        ):
-            st.session_state.page = "emotional"
-            st.rerun()
+    agents = [
+        (
+            "01 · DISCOVER",
+            "🔎 Research Agent",
+            "Retrieves relevant scientific studies "
+            "and organizes research findings."
+        ),
+        (
+            "02 · VERIFY",
+            "🛡️ Verification Agent",
+            "Examines citations, checks claim support, "
+            "and identifies uncertainties."
+        ),
+        (
+            "03 · EXPLAIN",
+            "📖 Explanation Agent",
+            "Summarizes scientific evidence and "
+            "communicates important limitations."
+        ),
+    ]
 
-    # Self-Assessment Card
-    with col2:
+    agent_columns = st.columns(3, gap="medium")
 
-        st.html("""
-<div class="feature-card">
+    for column, (step, name, description) in zip(
+        agent_columns, agents
+    ):
 
-    <div class="feature-icon">
-        🧠
-    </div>
+        with column:
+            st.html(f"""
+            <div style="
+                background: white;
+                border: 1px solid #E2E8F0;
+                border-radius: 22px;
+                padding: 28px;
+                min-height: 205px;
+                box-sizing: border-box;
+                box-shadow: 0 10px 35px rgba(30,64,175,0.045);
+            ">
 
-    <div class="feature-title">
-        Mental Health Self-Assessment
-    </div>
+                <div style="
+                    color:#2563EB;
+                    font-size:13px;
+                    font-weight:700;
+                    margin-bottom:16px;
+                ">{step}</div>
 
-    <div class="feature-description">
-        Explore your anxiety symptoms through a structured
-        GAD-7 screening questionnaire.
+                <div style="
+                    font-size:20px;
+                    font-weight:700;
+                    color:#1E293B;
+                    margin-bottom:14px;
+                ">{name}</div>
 
-        <br><br>
+                <div style="
+                    font-size:15px;
+                    line-height:1.7;
+                    color:#64748B;
+                ">{description}</div>
 
-        Receive a clear, non-diagnostic interpretation
-        of your responses.
-    </div>
+            </div>
+            """)
 
-</div>
-""")
+    # -----------------------------------------------------
+    # Research Report Preview
+    # -----------------------------------------------------
 
-        if st.button(
-            "Start Self-Assessment →",
-            key="assessment_button",
-            type="primary",
-            use_container_width=True
-        ):
-            st.session_state.page = "assessment"
-            st.rerun()
-
-    # Research Support Card
-    with col3:
-
-        st.html("""
-<div class="feature-card">
-
-    <div class="feature-icon">
-        🔬
-    </div>
-
-    <div class="feature-title">
-        Evidence-Based Research Support
-    </div>
-
-    <div class="feature-description">
-        Explore scientific research related to academic
-        stress, anxiety and mental well-being.
-
-        <br><br>
-
-        Discover research findings, credible sources
-        and their limitations.
+    st.html("""
+    <div class="section-title"
+         style="text-align:center; margin-top:45px;">
+        What You'll Receive
     </div>
 
-</div>
-""")
+    <div class="section-subtitle" style="text-align:center;">
+        A structured research report designed for
+        transparency and evidence traceability.
+    </div>
+    """)
 
-        if st.button(
-            "Explore Research →",
-            key="research_button",
-            type="primary",
-            use_container_width=True
-        ):
-            st.session_state.page = "research"
-            st.rerun()
+    with st.container(border=True):
+
+        st.markdown("#### 📋 Evidence-Based Research Report")
+
+        preview_columns = st.columns(2)
+
+        with preview_columns[0]:
+            st.markdown(
+                "**📚 Scientific References**\n\n"
+                "Relevant publications and available source details."
+            )
+
+            st.markdown(
+                "**🛡️ Verification Status**\n\n"
+                "Agent-reported citation checks and verification scope."
+            )
+
+        with preview_columns[1]:
+            st.markdown(
+                "**🔍 Research Claim Assessment**\n\n"
+                "How available evidence relates to scientific claims."
+            )
+
+            st.markdown(
+                "**📖 Findings & Limitations**\n\n"
+                "Accessible explanations and unresolved uncertainties."
+            )
+
+        st.caption(
+            "Report structure preview only. Actual research "
+            "results depend on the studies and evidence retrieved. "
+            "Agent-reported verification is not independent proof."
+        )
 
     # -----------------------------------------------------
     # Footer
     # -----------------------------------------------------
 
     st.html("""
-<div class="footer">
-    MindBridge is a non-diagnostic research prototype,
-    not a medical service.<br>
+    <div class="footer">
+        MindBridge is a non-diagnostic research prototype,
+        not a medical service.<br>
 
-    It has not undergone clinical safety or effectiveness
-    validation and cannot replace professional mental
-    health care.
+        AI-generated scientific claims and citations
+        may remain unverified. The system has not undergone
+        clinical safety or effectiveness validation.
 
-    <br><br>
+        <br><br>
 
-    © 2026 MindBridge · AI4Science Research Project
-</div>
-""")
+        © 2026 MindBridge · AI4Science Research Project
+    </div>
+    """)
+
 
 
 # =========================================================
