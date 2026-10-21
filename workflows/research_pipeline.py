@@ -247,7 +247,7 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
     # Shared Pipeline Time Budget
     # -----------------------------------------------------
 
-    PIPELINE_TIMEOUT = 290
+    PIPELINE_TIMEOUT = 590
 
     deadline = time.monotonic() + PIPELINE_TIMEOUT
 
