@@ -1,3 +1,4 @@
+import inspect
 import asyncio
 import logging
 import streamlit as st
@@ -12,6 +13,14 @@ from research_results import (
 )
 
 from workflows.research_pipeline import run_research_pipeline
+# Temporary Cloud deployment diagnostics
+logging.warning(
+    "CLOUD DEBUG | function=%s | signature=%s | source=%s",
+    run_research_pipeline.__name__,
+    inspect.signature(run_research_pipeline),
+    inspect.getfile(run_research_pipeline),
+)
+
 from workflows.evidence_validation import validate_research_evidence
 
 
@@ -1539,29 +1548,6 @@ elif st.session_state.page == "research":
 
                     st.rerun()
 
-
-                    with job.lock:
-                        job.cancel_requested = True
-                        loop = job.loop
-                        task = job.task
-                        future = job.future
-
-                    # Cancel the active asyncio task safely
-                    if loop is not None and task is not None:
-                        try:
-                            loop.call_soon_threadsafe(task.cancel)
-                        except RuntimeError:
-                            logging.warning(
-                                "Research event loop is no longer available."
-                            )
-
-                    # Cancel a job that has not started yet
-                    elif future is not None and future.cancel():
-                        with job.lock:
-                            job.status = "cancelled"
-
-                    st.rerun()
-
             show_research_progress()
 
         elif status == "cancelled":
@@ -1916,7 +1902,8 @@ elif st.session_state.page == "research":
         st.button(
             "Clear Request",
             key="clear_research",
-            on_click=clear_research_request
+            on_click=clear_research_request,
+            disabled=st.session_state.get("research_status") == "running"
         )
 
         st.divider()
