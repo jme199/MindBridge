@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import streamlit as st
+import threading
+from concurrent.futures import ThreadPoolExecutor
 
 from scoring import calculate_gad7
 
@@ -15,6 +17,13 @@ from workflows.evidence_validation import validate_research_evidence
 
 # Clear research request and input widgets
 def clear_research_request():
+
+    # Prevent clearing an active research workflow
+    if st.session_state.get("research_status") == "running":
+        return
+
+    # Clear the previous background research job
+    st.session_state.pop("research_job", None)
 
     st.session_state.pop("research_request", None)
     st.session_state.pop("research_status", None)
@@ -44,6 +53,156 @@ st.set_page_config(
 # Initialize session state
 if "page" not in st.session_state:
     st.session_state.page = "home"
+
+# Initialize research background task state
+if "research_job" not in st.session_state:
+    st.session_state.research_job = None
+
+# =========================================================
+# Research Background Task Manager
+# =========================================================
+
+class ResearchJob:
+    """
+    Store the state of one background research workflow.
+    """
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.future = None
+        self.loop = None
+        self.task = None
+
+        self.cancel_requested = False
+        self.status = "pending"
+
+        self.agent_states = {
+            "research": "Not Started",
+            "verification": "Not Started",
+            "explanation": "Not Started",
+        }
+
+        self.current_run_id = None
+        self.current_role = None
+
+        self.result = None
+        self.error = None
+
+
+@st.cache_resource(show_spinner=False)
+def get_research_executor():
+    """
+    Reuse a thread pool across Streamlit reruns.
+    """
+    return ThreadPoolExecutor(
+        max_workers=4,
+        thread_name_prefix="mindbridge_research",
+    )
+
+
+# =========================================================
+# Background Research Execution
+# =========================================================
+
+def execute_research_job(job, question, api_key):
+    """
+    Execute the research pipeline in a background thread.
+    Do not call Streamlit UI functions from this thread.
+    """
+
+    async def runner():
+
+        with job.lock:
+            job.loop = asyncio.get_running_loop()
+            job.task = asyncio.current_task()
+            cancelled = job.cancel_requested
+
+        if cancelled:
+            raise asyncio.CancelledError()
+
+        # Update progress without calling Streamlit
+        def update_progress(role, status):
+            with job.lock:
+                job.agent_states[role] = status
+
+                # Clear the previous Run ID when an Agent starts
+                if status == "running":
+                    job.current_role = role
+                    job.current_run_id = None
+
+                # Clear the Run ID when the Agent finishes
+                elif job.current_role == role:
+                    job.current_run_id = None
+
+        # Record the currently running SciencePal Run ID
+
+        # Record the current SciencePal Run ID
+        def on_run_started(run_info):
+            with job.lock:
+                job.current_role = run_info["role"]
+                job.current_run_id = run_info["run_id"]
+
+                # Check if cancellation was requested
+                # before the Run ID became available
+                cancel_requested = job.cancel_requested
+                loop = job.loop
+                task = job.task
+
+            # Cancel as soon as the Run ID is available
+            if (
+                cancel_requested
+                and loop is not None
+                and task is not None
+            ):
+                try:
+                    loop.call_soon_threadsafe(task.cancel)
+                except RuntimeError:
+                    logging.warning(
+                        "Research event loop is no longer available."
+                    )
+
+
+        # Check whether cancellation was requested
+        def should_cancel():
+            with job.lock:
+                return job.cancel_requested
+
+        return await run_research_pipeline(
+            question=question,
+            api_key=api_key,
+            progress_callback=update_progress,
+            on_run_started=on_run_started,
+            should_cancel=should_cancel,
+        )
+
+    try:
+        result = asyncio.run(runner())
+
+        with job.lock:
+            job.result = result
+            job.status = "finished"
+
+    except asyncio.CancelledError:
+
+        with job.lock:
+            job.status = "cancelled"
+
+    except Exception as error:
+
+        logging.exception(
+            "Background research pipeline failed"
+        )
+
+        with job.lock:
+            job.error = type(error).__name__
+            job.status = "error"
+
+    finally:
+
+        with job.lock:
+            job.loop = None
+            job.task = None
+
 
 # Initialize assessment workflow
 if "assessment_step" not in st.session_state:
@@ -413,6 +572,7 @@ if st.session_state.page == "home":
             key="home_research_button",
             type="primary",
             use_container_width=True,
+            disabled=st.session_state.get("research_status") == "running",
         ):
 
             question = home_question.strip()
@@ -1078,7 +1238,8 @@ elif st.session_state.page == "research":
         "🔬 Explore Scientific Evidence →",
         type="primary",
         use_container_width=True,
-        key="research_submit"
+        key="research_submit",
+        disabled=st.session_state.get("research_status") == "running",
     ):
 
         if (
@@ -1124,10 +1285,12 @@ elif st.session_state.page == "research":
 
     if st.session_state.get("research_status") in (
         "pending",
+        "running",
         "completed",
         "no_evidence",
         "pending_or_failed",
-        "error"
+        "cancelled",
+        "error",
     ):
 
         st.divider()
@@ -1169,6 +1332,7 @@ elif st.session_state.page == "research":
                 key="research_live_consent"
             )
 
+
             if st.button(
                 "🚀 Run Live Research",
                 key="research_run_live",
@@ -1176,11 +1340,10 @@ elif st.session_state.page == "research":
                 use_container_width=True,
                 disabled=not st.session_state.get(
                     "research_live_consent", False
-                )
+                ),
             ):
 
                 try:
-
                     api_key = st.secrets.get(
                         "SCIENCEPAL_API_KEY"
                     )
@@ -1206,135 +1369,210 @@ elif st.session_state.page == "research":
                             f"\nResearch topic: {request['topic']}"
                         )
 
-                    # Mark workflow as running
-                    st.session_state.research_status = "running"
+                    # Prevent duplicate background jobs
+                    existing_job = st.session_state.get(
+                        "research_job"
+                    )
 
-                    # -----------------------------------------------------
-                    # Live Multi-Agent Progress
-                    # -----------------------------------------------------
-
-                    with st.status(
-                        "Starting Multi-Agent Research Workflow...",
-                        expanded=True
-                    ) as status_box:
-
-                        # Agent display names
-                        agent_names = {
-                            "research": "Research Agent",
-                            "verification": "Verification Agent",
-                            "explanation": "Explanation Agent",
-                        }
-
-                        # Initial Agent statuses
-                        agent_states = {
-                            "research": "Not Started",
-                            "verification": "Not Started",
-                            "explanation": "Not Started",
-                        }
-
-                        # Create a placeholder for the status table
-                        progress_placeholder = st.empty()
-
-                        def render_progress():
-                            """
-                            Update the Agent status table.
-                            """
-
-                            progress_data = [
-                                {
-                                    "Agent": agent_names[role],
-                                    "Status": agent_states[role],
-                                }
-                                for role in agent_names
-                            ]
-
-                            progress_placeholder.table(
-                                progress_data
-                            )
-
-                        # Display initial statuses
-                        render_progress()
-
-                        # Progress callback
-                        def update_progress(role, status):
-                            """
-                            Receive progress updates from
-                            the Multi-Agent Orchestrator.
-                            """
-
-                            if role not in agent_states:
-                                return
-
-                            agent_states[role] = status
-
-                            # Refresh the status table
-                            render_progress()
-
-                            # Update the progress message
-                            status_box.update(
-                                label=(
-                                    f"{agent_names[role]}: "
-                                    f"{status}"
-                                ),
-                                state="running",
-                                expanded=True
-                            )
-
-                        # Execute the Multi-Agent Workflow
-                        result = asyncio.run(
-                            run_research_pipeline(
-                                question=prompt,
-                                api_key=api_key,
-                                progress_callback=update_progress
-                            )
-                        )
-
-                    # Update final workflow status
-                    if result.get("status") == "completed":
-
-                        status_box.update(
-                            label="Multi-Agent Workflow Completed",
-                            state="complete",
-                            expanded=False
-                        )
-
-                    elif result.get("status") == "no_evidence":
-
-                        status_box.update(
-                            label="Research Completed: No Evidence Found",
-                            state="complete",
-                            expanded=False
+                    if (
+                        existing_job is not None
+                        and existing_job.future is not None
+                        and not existing_job.future.done()
+                    ):
+                        st.warning(
+                            "A research workflow is already running."
                         )
 
                     else:
+                        # Clear results from the previous workflow
+                        st.session_state.pop("research_pipeline_result", None)
+                        st.session_state.pop("research_error", None)
 
-                        status_box.update(
-                            label="Workflow Paused or Did Not Complete",
-                            state="error",
-                            expanded=True
+                        # Create a background research job
+                        job = ResearchJob()
+
+                        with job.lock:
+                            job.status = "running"
+
+                        # Save the job before starting it
+                        st.session_state.research_job = job
+
+                        # Start the background workflow
+                        job.future = get_research_executor().submit(
+                            execute_research_job,
+                            job,
+                            prompt,
+                            api_key,
                         )
 
-                    # Save the pipeline result
-                    st.session_state.research_pipeline_result = result
-
-                    # Update research status
-                    st.session_state.research_status = result.get(
-                        "status", "error"
-                    )
+                        st.session_state.research_status = "running"
 
                 except Exception as error:
 
                     logging.exception(
-                        "MindBridge research pipeline failed"
+                        "Failed to start background research"
                     )
 
                     st.session_state.research_status = "error"
-
                     st.session_state.research_error = (
                         type(error).__name__
                     )
 
                 st.rerun()
+
+
+
+        # -----------------------------------------------------
+        # Running Workflow — Live Progress and Cancellation
+        # -----------------------------------------------------
+
+        elif status == "running":
+
+            @st.fragment(run_every="2s")
+            def show_research_progress():
+
+                job = st.session_state.get("research_job")
+
+                if job is None:
+                    st.session_state.research_status = "error"
+                    st.session_state.research_error = "MissingResearchJob"
+                    st.rerun()
+
+                # Read background state safely
+                with job.lock:
+                    job_status = job.status
+                    agent_states = dict(job.agent_states)
+                    cancel_requested = job.cancel_requested
+                    result = job.result
+                    error = job.error
+
+                # Background task completed
+                if job_status == "finished":
+
+                    if isinstance(result, dict):
+                        st.session_state.research_pipeline_result = result
+                        st.session_state.research_status = result.get(
+                            "status", "error"
+                        )
+                    else:
+                        st.session_state.research_status = "error"
+                        st.session_state.research_error = "InvalidJobResult"
+
+                    st.rerun()
+
+                # Cancellation confirmed locally
+                if job_status == "cancelled":
+                    st.session_state.research_status = "cancelled"
+                    st.rerun()
+
+                # Background task failed
+                if job_status == "error":
+                    st.session_state.research_status = "error"
+                    st.session_state.research_error = error or "UnknownError"
+                    st.rerun()
+
+                st.subheader("Multi-Agent Research Workflow")
+
+                names = {
+                    "research": "Research Agent",
+                    "verification": "Verification Agent",
+                    "explanation": "Explanation Agent",
+                }
+
+                progress_data = [
+                    {
+                        "Agent": name,
+                        "Status": agent_states[role],
+                    }
+                    for role, name in names.items()
+                ]
+
+                st.table(progress_data)
+
+                if cancel_requested:
+                    st.warning(
+                        "Cancellation requested. Waiting for "
+                        "the background task to stop."
+                    )
+
+
+                elif st.button(
+                    "🛑 Cancel Research",
+                    key="cancel_live_research",
+                    type="secondary",
+                    use_container_width=True,
+                ):
+
+                    # Record the cancellation request
+                    with job.lock:
+                        job.cancel_requested = True
+
+                        loop = job.loop
+                        task = job.task
+                        run_id = job.current_run_id
+                        future = job.future
+
+                    # Case 1: Background task has not started
+                    if future is not None and future.cancel():
+                        with job.lock:
+                            job.status = "cancelled"
+
+                    # Case 2: Remote Run ID is available
+                    elif (
+                        run_id is not None
+                        and loop is not None
+                        and task is not None
+                    ):
+                        try:
+                            loop.call_soon_threadsafe(
+                                task.cancel
+                            )
+                        except RuntimeError:
+                            logging.warning(
+                                "Research event loop is no longer available."
+                            )
+
+                    # Case 3: Run ID not yet available
+                    # Keep cancel_requested=True.
+                    # on_run_started() will handle cancellation
+                    # once the Run ID becomes available.
+
+                    st.rerun()
+
+
+                    with job.lock:
+                        job.cancel_requested = True
+                        loop = job.loop
+                        task = job.task
+                        future = job.future
+
+                    # Cancel the active asyncio task safely
+                    if loop is not None and task is not None:
+                        try:
+                            loop.call_soon_threadsafe(task.cancel)
+                        except RuntimeError:
+                            logging.warning(
+                                "Research event loop is no longer available."
+                            )
+
+                    # Cancel a job that has not started yet
+                    elif future is not None and future.cancel():
+                        with job.lock:
+                            job.status = "cancelled"
+
+                    st.rerun()
+
+            show_research_progress()
+
+        elif status == "cancelled":
+
+            st.warning(
+                "The local research workflow was cancelled. "
+                "Remote SciencePal cancellation may not yet "
+                "be independently confirmed."
+            )
+
+
 
         # -----------------------------------------------------
         # Completed Workflow

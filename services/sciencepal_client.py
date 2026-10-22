@@ -1,5 +1,6 @@
 import json
 import asyncio
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -40,6 +41,7 @@ async def run_agent(
     role,
     max_wait_seconds=180,
     poll_interval=3,
+    on_run_started=None,
 ):
     """
     Execute a SciencePal Agent with timeout protection.
@@ -132,6 +134,18 @@ async def run_agent(
                     run_id,
                     "initiated",
                 )
+
+                if on_run_started is not None:
+                    try:
+                        on_run_started({
+                            "role": role,
+                            "thread_id": thread_id,
+                            "run_id": run_id,
+                        })
+                    except Exception:
+                        logging.exception(
+                            "Failed to notify caller about the new Agent Run."
+                        )
 
                 # Step 2: Collect streaming events
                 async for event in client.runs.stream(run_id):

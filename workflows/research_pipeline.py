@@ -224,7 +224,13 @@ def extract_agent_json(events):
 # 3. Multi-Agent Research Pipeline
 # =========================================================
 
-async def run_research_pipeline(question, api_key, progress_callback=None):
+async def run_research_pipeline(
+    question,
+    api_key,
+    progress_callback=None,
+    on_run_started=None,
+    should_cancel=None,
+):
     """
     Execute the three MindBridge research Agents.
 
@@ -274,11 +280,19 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
     # Shared Agent Execution Function
     # -----------------------------------------------------
 
+
     async def run_with_budget(role, prompt):
         """
-        Execute an Agent using the remaining
-        shared pipeline time budget.
+        Execute an Agent using the remaining shared
+        pipeline time budget.
+
+        Notify the caller when the remote Run ID
+        becomes available.
         """
+
+        # Do not start another Agent after cancellation
+        if should_cancel is not None and should_cancel():
+            raise asyncio.CancelledError()
 
         remaining = deadline - time.monotonic()
 
@@ -290,6 +304,7 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
             notify_progress(role, "timed_out")
 
             return {
+                "role": role,
                 "thread_id": None,
                 "run_id": None,
                 "status": "timed_out",
@@ -306,11 +321,17 @@ async def run_research_pipeline(question, api_key, progress_callback=None):
             max_wait_seconds=max(
                 1, int(available) - 5
             ),
+            on_run_started=on_run_started,
         )
+
+        # Prevent the pipeline from advancing after cancellation
+        if should_cancel is not None and should_cancel():
+            raise asyncio.CancelledError()
 
         notify_progress(role, result["status"])
 
         return result
+
 
     # -----------------------------------------------------
     # Agent 1: Research
