@@ -1,4 +1,3 @@
-import inspect
 import asyncio
 import logging
 import streamlit as st
@@ -13,14 +12,6 @@ from research_results import (
 )
 
 from workflows.research_pipeline import run_research_pipeline
-# Temporary Cloud deployment diagnostics
-logging.warning(
-    "CLOUD DEBUG | function=%s | signature=%s | source=%s",
-    run_research_pipeline.__name__,
-    inspect.signature(run_research_pipeline),
-    inspect.getfile(run_research_pipeline),
-)
-
 from workflows.evidence_validation import validate_research_evidence
 
 
