@@ -6,10 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from scoring import calculate_gad7
 
-from research_results import (
-    DEMO_RESEARCH_RESULT,
-    render_research_results
-)
+from research_results import render_research_results
 
 from workflows.research_pipeline import run_research_pipeline
 from workflows.evidence_validation import validate_research_evidence
@@ -32,11 +29,11 @@ def clear_research_request():
     # Clear Multi-Agent workflow results
     st.session_state.pop("research_pipeline_result", None)
     st.session_state.pop("research_error", None)
-    st.session_state.pop("research_live_consent", None)
+    st.session_state["research_live_consent"] = False
 
     # Reset input widgets
     st.session_state.research_question = ""
-    st.session_state.research_topic = "Select a topic"
+    st.session_state.research_topic = None
 
 
 # =========================================================
@@ -51,6 +48,20 @@ st.set_page_config(
 )
 
 # Initialize session state
+
+# -----------------------------------------------------
+# UI Language Configuration
+# -----------------------------------------------------
+
+if "ui_language" not in st.session_state:
+    st.session_state.ui_language = "EN"
+
+
+def ui_text(en, zh):
+    """Return Streamlit UI text in the selected language."""
+    return zh if st.session_state.ui_language == "中文" else en
+
+
 if "page" not in st.session_state:
     st.session_state.page = "home"
 
@@ -448,11 +459,12 @@ st.html("""
 """)
 
 
+
 # =========================================================
 # 3. Navigation
 # =========================================================
 
-nav1, nav2 = st.columns([2, 3])
+nav1, nav2, nav3 = st.columns([2, 3, 1])
 
 with nav1:
     st.html("""
@@ -462,11 +474,22 @@ with nav1:
 """)
 
 with nav2:
-    st.html("""
+    st.html(f"""
 <div class="nav-caption">
-    AI-Powered Mental Wellness Research
+    {ui_text(
+        "AI-Powered Mental Wellness Research",
+        "AI 驱动的心理健康科研支持"
+    )}
 </div>
 """)
+
+with nav3:
+    st.segmented_control(
+        "Language",
+        options=["EN", "中文"],
+        key="ui_language",
+        label_visibility="collapsed",
+    )
 
 
 # =========================================================
@@ -480,95 +503,136 @@ if st.session_state.page == "home":
     # Hero Section
     # -----------------------------------------------------
 
-    st.html("""
+
+    st.html(f"""
     <div class="hero">
         <div class="hero-badge">
-            ✦ AI4SCIENCE · MULTI-AGENT RESEARCH
+            {ui_text(
+                "✦ AI4SCIENCE · MULTI-AGENT RESEARCH",
+                "✦ AI4SCIENCE · 多智能体科研"
+            )}
         </div>
 
         <div class="hero-title">
-            Explore the Research.<br>
+            {ui_text(
+                "Explore the Research.",
+                "探索科学研究"
+            )}<br>
             <span class="gradient-text">
-                Examine the Evidence.
+                {ui_text(
+                    "Examine the Evidence.",
+                    "审视科研证据"
+                )}
             </span>
         </div>
 
         <div class="hero-subtitle">
-            A multi-agent evidence verification system for
-            university mental health research.
-            Discover scientific studies, assess research
-            claims, and understand findings and limitations.
+            {ui_text(
+                "A multi-agent evidence verification system for "
+                "university mental health research. "
+                "Discover scientific studies, assess research "
+                "claims, and understand findings and limitations.",
+                "面向大学生心理健康研究的多智能体证据验证系统。"
+                "帮助用户检索科学文献、核查研究论断，"
+                "并理解研究发现及其局限性。"
+            )}
         </div>
     </div>
     """)
+
 
     # -----------------------------------------------------
     # Research Question Entry
     # -----------------------------------------------------
 
-    st.html("""
+    st.html(f"""
     <div class="section-title" style="text-align:center;">
-        Explore a Research Question
+        {ui_text(
+            "Explore a Research Question",
+            "探索科研问题"
+        )}
     </div>
     <div class="section-subtitle" style="text-align:center;">
-        Start with a question about university students'
-        mental wellbeing.
+        {ui_text(
+            "Start with a question about university students' mental wellbeing.",
+            "从一个关于大学生心理健康的科研问题开始"
+        )}
     </div>
     """)
 
-    # Example question callback
+
+    # -----------------------------------------------------
+    # Example Research Questions — Bilingual
+    # -----------------------------------------------------
+
     def select_example(question):
         st.session_state.home_research_question = question
 
     examples = [
         (
             "Academic Stress",
+            "学业压力",
             "What evidence-based strategies help university "
-            "students manage academic stress?"
+            "students manage academic stress?",
+            "哪些有科学证据支持的方法能够帮助大学生应对学业压力？"
         ),
         (
             "Loneliness",
+            "孤独感",
             "What does research say about reducing loneliness "
-            "among university students?"
+            "among university students?",
+            "科学研究对缓解大学生孤独感有哪些发现？"
         ),
         (
             "Sleep & Anxiety",
+            "睡眠与焦虑",
             "What is the relationship between sleep quality "
-            "and anxiety among university students?"
+            "and anxiety among university students?",
+            "大学生的睡眠质量与焦虑之间存在什么关系？"
         ),
     ]
 
     example_columns = st.columns(3)
 
-    for index, (label, question) in enumerate(examples):
+    for index, (label_en, label_zh, question_en, question_zh) in enumerate(examples):
         with example_columns[index]:
             st.button(
-                label,
+                ui_text(label_en, label_zh),
                 key=f"home_example_{index}",
                 on_click=select_example,
-                args=(question,),
+                args=(ui_text(question_en, question_zh),),
                 use_container_width=True,
             )
 
     with st.container(border=True):
 
         home_question = st.text_area(
-            "Your Research Question",
-            placeholder=(
+            ui_text(
+                "Your Research Question",
+                "你的科研问题"
+            ),
+            placeholder=ui_text(
                 "Ask a scientific research question about "
-                "university students' mental wellbeing..."
+                "university students' mental wellbeing...",
+                "请输入一个关于大学生心理健康的科研问题..."
             ),
             height=120,
             key="home_research_question",
         )
 
         st.caption(
-            "Avoid entering personal identifiers or "
-            "sensitive mental health information."
+            ui_text(
+                "Avoid entering personal identifiers or "
+                "sensitive mental health information.",
+                "请勿输入个人身份信息或敏感的心理健康信息。"
+            )
         )
 
         if st.button(
-            "🔬 Explore Scientific Evidence →",
+            ui_text(
+                "🔬 Explore Scientific Evidence →",
+                "🔬 探索科学证据 →"
+            ),
             key="home_research_button",
             type="primary",
             use_container_width=True,
@@ -578,7 +642,12 @@ if st.session_state.page == "home":
             question = home_question.strip()
 
             if not question:
-                st.warning("Please enter a research question.")
+                st.warning(
+                    ui_text(
+                        "Please enter a research question.",
+                        "请输入一个科研问题。"
+                    )
+                )
 
             else:
                 # Clear old results without calling SciencePal
@@ -601,36 +670,55 @@ if st.session_state.page == "home":
     # Multi-Agent Workflow
     # -----------------------------------------------------
 
-    st.html("""
+    st.html(f"""
     <div class="section-title"
          style="text-align:center; margin-top:45px;">
-        How MindBridge Works
+        {ui_text(
+            "How MindBridge Works",
+            "MindBridge 如何运作"
+        )}
     </div>
 
     <div class="section-subtitle" style="text-align:center;">
-        Three specialized AI agents working together
-        to investigate one research question.
+        {ui_text(
+            "Three specialized AI agents working together "
+            "to investigate one research question.",
+            "三个专业化 AI 智能体协同工作，"
+            "共同完成科研问题的检索、验证与解释。"
+        )}
     </div>
     """)
 
     agents = [
         (
-            "01 · DISCOVER",
-            "🔎 Research Agent",
-            "Retrieves relevant scientific studies "
-            "and organizes research findings."
+            ui_text("01 · DISCOVER", "01 · 检索"),
+            ui_text("🔎 Research Agent", "🔎 科研检索智能体"),
+            ui_text(
+                "Retrieves relevant scientific studies "
+                "and organizes research findings.",
+                "检索相关科学文献，"
+                "并整理研究发现与证据信息。"
+            )
         ),
         (
-            "02 · VERIFY",
-            "🛡️ Verification Agent",
-            "Examines citations, checks claim support, "
-            "and identifies uncertainties."
+            ui_text("02 · VERIFY", "02 · 核查"),
+            ui_text("🛡️ Verification Agent", "🛡️ 证据验证智能体"),
+            ui_text(
+                "Examines citations, checks claim support, "
+                "and identifies uncertainties.",
+                "核查文献引用与科学论断的证据支持情况，"
+                "并识别研究中的不确定性。"
+            )
         ),
         (
-            "03 · EXPLAIN",
-            "📖 Explanation Agent",
-            "Summarizes scientific evidence and "
-            "communicates important limitations."
+            ui_text("03 · EXPLAIN", "03 · 解释"),
+            ui_text("📖 Explanation Agent", "📖 科研解释智能体"),
+            ui_text(
+                "Summarizes scientific evidence and "
+                "communicates important limitations.",
+                "总结科学证据，"
+                "以易于理解的方式解释研究发现及其局限性。"
+            )
         ),
     ]
 
@@ -679,68 +767,117 @@ if st.session_state.page == "home":
     # Research Report Preview
     # -----------------------------------------------------
 
-    st.html("""
+    st.html(f"""
     <div class="section-title"
          style="text-align:center; margin-top:45px;">
-        What You'll Receive
+        {ui_text(
+            "What You'll Receive",
+            "你将获得什么"
+        )}
     </div>
 
     <div class="section-subtitle" style="text-align:center;">
-        A structured research report designed for
-        transparency and evidence traceability.
+        {ui_text(
+            "A structured research report designed for "
+            "transparency and evidence traceability.",
+            "一份结构化的科研报告，"
+            "帮助你清晰了解科学证据及其来源。"
+        )}
     </div>
     """)
 
     with st.container(border=True):
 
-        st.markdown("#### 📋 Evidence-Based Research Report")
+        st.markdown(
+            ui_text(
+                "#### 📋 Evidence-Based Research Report",
+                "#### 📋 基于科学证据的研究报告"
+            )
+        )
 
         preview_columns = st.columns(2)
 
         with preview_columns[0]:
+
             st.markdown(
-                "**📚 Scientific References**\n\n"
-                "Relevant publications and available source details."
+                ui_text(
+                    "**📚 Scientific References**\n\n"
+                    "Relevant publications and available source details.",
+                    "**📚 科学文献引用**\n\n"
+                    "相关科研文献及其可获取的来源信息。"
+                )
             )
 
             st.markdown(
-                "**🛡️ Verification Status**\n\n"
-                "Agent-reported citation checks and verification scope."
+                ui_text(
+                    "**🛡️ Verification Status**\n\n"
+                    "Agent-reported citation checks and verification scope.",
+                    "**🛡️ 证据核查状态**\n\n"
+                    "展示智能体报告的文献核查结果及核查范围。"
+                )
             )
 
         with preview_columns[1]:
+
             st.markdown(
-                "**🔍 Research Claim Assessment**\n\n"
-                "How available evidence relates to scientific claims."
+                ui_text(
+                    "**🔍 Research Claim Assessment**\n\n"
+                    "How available evidence relates to scientific claims.",
+                    "**🔍 科研论断评估**\n\n"
+                    "分析现有科学证据与研究论断之间的关系。"
+                )
             )
 
             st.markdown(
-                "**📖 Findings & Limitations**\n\n"
-                "Accessible explanations and unresolved uncertainties."
+                ui_text(
+                    "**📖 Findings & Limitations**\n\n"
+                    "Accessible explanations and unresolved uncertainties.",
+                    "**📖 研究发现与局限性**\n\n"
+                    "以易于理解的方式解释研究结果及尚未解决的不确定性。"
+                )
             )
 
         st.caption(
-            "Report structure preview only. Actual research "
-            "results depend on the studies and evidence retrieved. "
-            "Agent-reported verification is not independent proof."
+            ui_text(
+                "Report structure preview only. Actual research "
+                "results depend on the studies and evidence retrieved. "
+                "Agent-reported verification is not independent proof.",
+                "以上仅为报告结构预览。实际研究结果取决于检索到的"
+                "科学文献与证据。智能体报告的核查结果"
+                "不等同于独立验证。"
+            )
         )
 
+
     # -----------------------------------------------------
-    # Footer
+    # Footer — Bilingual
     # -----------------------------------------------------
 
-    st.html("""
+    st.html(f"""
     <div class="footer">
-        MindBridge is a non-diagnostic research prototype,
-        not a medical service.<br>
-
-        AI-generated scientific claims and citations
-        may remain unverified. The system has not undergone
-        clinical safety or effectiveness validation.
+        {ui_text(
+            "MindBridge is a non-diagnostic research prototype, "
+            "not a medical service.",
+            "MindBridge 是一个非诊断性的科研原型系统，"
+            "不提供医疗服务。"
+        )}
 
         <br><br>
 
-        © 2026 MindBridge · AI4Science Research Project
+        {ui_text(
+            "AI-generated scientific claims and citations "
+            "may remain unverified. The system has not undergone "
+            "clinical safety or effectiveness validation.",
+            "AI 生成的科研论断和文献引用可能尚未经过独立验证。"
+            "本系统尚未接受临床安全性或有效性验证。"
+        )}
+
+        <br><br>
+
+        {ui_text(
+            "© 2026 MindBridge · AI4Science Research Project",
+            "© 2026 MindBridge · AI4Science 科研项目"
+        )}
     </div>
     """)
 
@@ -1175,47 +1312,67 @@ elif st.session_state.page == "assessment":
 
 elif st.session_state.page == "research":
 
-    if st.button("← Back to Home", key="research_back"):
+    if st.button(
+        ui_text("← Back to Home", "← 返回主页"),
+        key="research_back"
+    ):
         st.session_state.page = "home"
         st.rerun()
 
-    st.html("""
+    st.html(f"""
 <div class="section-title">
-    🔬 Evidence-Based Research Support
+    🔬 {ui_text("Evidence-Based Research Support", "基于科学证据的科研支持")}
 </div>
 <div class="section-subtitle">
-    Explore scientific evidence related to mental well-being.
+    {ui_text(
+        "Explore scientific evidence related to mental well-being.",
+        "探索心理健康相关的科学研究证据。"
+    )}
 </div>
 """)
 
-    st.info(
-        "MindBridge helps university students explore scientific "
-        "research on anxiety, academic stress, sleep and mental "
-        "well-being. Information is educational and non-diagnostic."
-    )
+
 
     # -----------------------------------------------------
     # Research Question
     # -----------------------------------------------------
 
-    st.subheader("What would you like to explore?")
+    st.subheader(
+        ui_text(
+            "What would you like to explore?",
+            "你想探索什么研究问题？"
+        )
+    )
 
     research_question = st.text_area(
-        "Describe your question or concern",
-        placeholder=(
+        ui_text(
+            "Describe your question or concern",
+            "描述你的研究问题或关注点"
+        ),
+        placeholder=ui_text(
             "For example: What does scientific research say about "
-            "non-pharmacological approaches to exam anxiety?"
+            "non-pharmacological approaches to exam anxiety?",
+            "例如：科学研究对缓解考试焦虑的非药物干预方法有哪些发现？"
         ),
         height=140,
         key="research_question"
     )
 
     st.caption(
-        "Avoid including names, student IDs, contact details "
-        "or other identifying information."
+        ui_text(
+            "Avoid including names, student IDs, contact details "
+            "or other identifying information.",
+            "请勿包含姓名、学号、联系方式或其他可识别个人身份的信息。"
+        )
     )
 
-    st.subheader("Suggested Research Topics")
+
+    st.subheader(
+        ui_text(
+            "Suggested Research Topics",
+            "推荐研究主题"
+        )
+    )
 
     topics = [
         "Exam Anxiety",
@@ -1224,60 +1381,172 @@ elif st.session_state.page == "research":
         "Mindfulness and Relaxation"
     ]
 
+    topic_labels_zh = {
+        "Exam Anxiety": "考试焦虑",
+        "Academic Stress": "学业压力",
+        "Sleep Difficulties": "睡眠困难",
+        "Mindfulness and Relaxation": "正念与放松"
+    }
+
     selected_topic = st.selectbox(
-        "Choose a topic (optional)",
-        ["Select a topic"] + topics,
+        ui_text(
+            "Choose a topic (optional)",
+            "选择研究主题（可选）"
+        ),
+        topics,
+        index=None,
+        placeholder=ui_text(
+            "Select a topic",
+            "选择研究主题"
+        ),
+        format_func=lambda topic: ui_text(
+            topic,
+            topic_labels_zh.get(topic, topic)
+        ),
         key="research_topic"
     )
 
+
     # -----------------------------------------------------
-    # Submit
+    # Research Consent
+    # -----------------------------------------------------
+
+    st.checkbox(
+        ui_text(
+            "I understand that my research question will "
+            "be sent to SciencePal for processing. "
+            "I will not include sensitive personal information.",
+            "我了解我的科研问题将发送至 SciencePal 进行处理，"
+            "并承诺不包含敏感个人信息。"
+        ),
+        key="research_live_consent",
+        disabled=st.session_state.get("research_status") == "running",
+    )
+
+
+
+    # -----------------------------------------------------
+    # Run Research — Direct Submission
     # -----------------------------------------------------
 
     if st.button(
-        "🔬 Explore Scientific Evidence →",
+        ui_text(
+            "🚀 Run Research",
+            "🚀 开始科研检索"
+        ),
+        key="research_submit",
         type="primary",
         use_container_width=True,
-        key="research_submit",
-        disabled=st.session_state.get("research_status") == "running",
+        disabled=(
+            st.session_state.get("research_status") == "running"
+            or not st.session_state.get("research_live_consent", False)
+        ),
     ):
 
-        if (
-            not research_question.strip()
-            and selected_topic == "Select a topic"
-        ):
+        question = research_question.strip()
+
+        topic = selected_topic
+
+        # Validate the current input
+        if not question and not topic:
 
             st.warning(
-                "Please enter a research question or select a topic."
+                ui_text(
+                    "Please enter a research question or select a topic.",
+                    "请输入科研问题或选择研究主题。"
+                )
             )
 
         else:
 
-            # Save the research request
+            # Save the latest user input
             st.session_state.research_request = {
-                "question": research_question.strip(),
-                "topic": (
-                    selected_topic
-                    if selected_topic != "Select a topic"
-                    else None
-                )
+                "question": question,
+                "topic": topic,
             }
 
-            # Reset previous results
-            st.session_state.pop(
-                "research_pipeline_result", None
-            )
+            try:
+                api_key = st.secrets.get("SCIENCEPAL_API_KEY")
 
-            st.session_state.pop(
-                "research_error", None
-            )
+                if not api_key:
+                    raise ValueError(
+                        "SciencePal API Key is not configured."
+                    )
 
-            st.session_state.pop(
-                "research_live_consent", None
-            )
+                # Construct the Research Agent prompt
+                prompt = question
 
-            # Prepare request without calling the API
-            st.session_state.research_status = "pending"
+                if not prompt:
+                    prompt = (
+                        "Review scientific research evidence "
+                        f"related to {topic}."
+                    )
+
+                elif topic:
+                    prompt += f"\nResearch topic: {topic}"
+
+                # Prevent duplicate background jobs
+                existing_job = st.session_state.get(
+                    "research_job"
+                )
+
+                if (
+                    existing_job is not None
+                    and existing_job.future is not None
+                    and not existing_job.future.done()
+                ):
+
+                    st.warning(
+                        ui_text(
+                            "A research workflow is already running.",
+                            "已有科研任务正在运行。"
+                        )
+                    )
+
+                else:
+
+                    # Clear previous workflow results
+                    st.session_state.pop(
+                        "research_pipeline_result", None
+                    )
+                    st.session_state.pop(
+                        "research_error", None
+                    )
+
+                    # Create a new background job
+                    job = ResearchJob()
+
+                    with job.lock:
+                        job.status = "running"
+
+                    st.session_state.research_job = job
+
+                    # Start the existing workflow
+                    job.future = get_research_executor().submit(
+                        execute_research_job,
+                        job,
+                        prompt,
+                        api_key,
+                    )
+
+                    st.session_state.research_status = "running"
+
+                    st.rerun()
+
+            except Exception as error:
+
+                logging.exception(
+                    "Failed to start background research"
+                )
+
+                st.session_state.research_status = "error"
+
+                st.session_state.research_error = (
+                    type(error).__name__
+                )
+
+                st.rerun()
+
 
     # -----------------------------------------------------
     # Research Status
@@ -1296,17 +1565,6 @@ elif st.session_state.page == "research":
 
         st.divider()
 
-        st.subheader("Research Request")
-
-        request = st.session_state.research_request
-
-        if request["question"]:
-            st.write("**Your question:**")
-            st.write(request["question"])
-
-        if request["topic"]:
-            st.write(f"**Selected topic:** {request['topic']}")
-
         # -----------------------------------------------------
         # Multi-Agent Workflow Execution
         # -----------------------------------------------------
@@ -1315,113 +1573,12 @@ elif st.session_state.page == "research":
 
         if status == "pending":
 
-            st.info(
-                "Your research request is ready. "
-                "No SciencePal API call has been made yet."
+            st.caption(
+                ui_text(
+                    "Review your question above, then click Run Research.",
+                    "请确认上方的科研问题，然后点击“开始科研检索”。"
+                )
             )
-
-            st.subheader("Multi-Agent Research Workflow")
-
-            st.write("1. Research Agent — Discover relevant studies.")
-            st.write("2. Verification Agent — Check research evidence.")
-            st.write("3. Explanation Agent — Generate the final report.")
-
-            st.checkbox(
-                "I understand that my research question will "
-                "be sent to SciencePal for processing. "
-                "I will not include sensitive personal information.",
-                key="research_live_consent"
-            )
-
-
-            if st.button(
-                "🚀 Run Live Research",
-                key="research_run_live",
-                type="primary",
-                use_container_width=True,
-                disabled=not st.session_state.get(
-                    "research_live_consent", False
-                ),
-            ):
-
-                try:
-                    api_key = st.secrets.get(
-                        "SCIENCEPAL_API_KEY"
-                    )
-
-                    if not api_key:
-                        raise ValueError(
-                            "SciencePal API Key is not configured."
-                        )
-
-                    request = st.session_state.research_request
-
-                    # Construct the Agent prompt
-                    prompt = request["question"]
-
-                    if not prompt:
-                        prompt = (
-                            "Review scientific research evidence "
-                            f"related to {request['topic']}."
-                        )
-
-                    elif request["topic"]:
-                        prompt += (
-                            f"\nResearch topic: {request['topic']}"
-                        )
-
-                    # Prevent duplicate background jobs
-                    existing_job = st.session_state.get(
-                        "research_job"
-                    )
-
-                    if (
-                        existing_job is not None
-                        and existing_job.future is not None
-                        and not existing_job.future.done()
-                    ):
-                        st.warning(
-                            "A research workflow is already running."
-                        )
-
-                    else:
-                        # Clear results from the previous workflow
-                        st.session_state.pop("research_pipeline_result", None)
-                        st.session_state.pop("research_error", None)
-
-                        # Create a background research job
-                        job = ResearchJob()
-
-                        with job.lock:
-                            job.status = "running"
-
-                        # Save the job before starting it
-                        st.session_state.research_job = job
-
-                        # Start the background workflow
-                        job.future = get_research_executor().submit(
-                            execute_research_job,
-                            job,
-                            prompt,
-                            api_key,
-                        )
-
-                        st.session_state.research_status = "running"
-
-                except Exception as error:
-
-                    logging.exception(
-                        "Failed to start background research"
-                    )
-
-                    st.session_state.research_status = "error"
-                    st.session_state.research_error = (
-                        type(error).__name__
-                    )
-
-                st.rerun()
-
-
 
         # -----------------------------------------------------
         # Running Workflow — Live Progress and Cancellation
@@ -1472,33 +1629,70 @@ elif st.session_state.page == "research":
                     st.session_state.research_error = error or "UnknownError"
                     st.rerun()
 
-                st.subheader("Multi-Agent Research Workflow")
+                st.subheader(
+                    ui_text(
+                        "Multi-Agent Research Workflow",
+                        "多智能体科研工作流"
+                    )
+                )
+
 
                 names = {
-                    "research": "Research Agent",
-                    "verification": "Verification Agent",
-                    "explanation": "Explanation Agent",
+                    "research": ui_text(
+                        "Research Agent", "科研检索智能体"
+                    ),
+                    "verification": ui_text(
+                        "Verification Agent", "证据核验智能体"
+                    ),
+                    "explanation": ui_text(
+                        "Explanation Agent", "报告解读智能体"
+                    ),
+                }
+
+                status_labels_zh = {
+                    "pending": "等待中",
+                    "waiting": "等待中",
+                    "queued": "排队中",
+                    "running": "运行中",
+                    "not_started": "尚未开始",
+                    "completed": "已完成",
+                    "finished": "已完成",
+                    "failed": "执行失败",
+                    "error": "发生错误",
+                    "cancelled": "已取消",
+                    "skipped": "已跳过",
+                    "safety_interrupt": "安全中断",
                 }
 
                 progress_data = [
                     {
-                        "Agent": name,
-                        "Status": agent_states[role],
+                        ui_text("Agent", "智能体"): name,
+                        ui_text("Status", "状态"): ui_text(
+                            agent_states[role],
+                            status_labels_zh.get(
+                                str(agent_states[role]).strip().lower().replace(" ", "_"),
+                                agent_states[role]
+                            )
+                        ),
                     }
                     for role, name in names.items()
                 ]
 
                 st.table(progress_data)
 
+
                 if cancel_requested:
                     st.warning(
-                        "Cancellation requested. Waiting for "
-                        "the background task to stop."
+                        ui_text(
+                            "Cancellation requested. Waiting for "
+                            "the background task to stop.",
+                            "已请求取消科研任务，正在等待后台任务停止。"
+                        )
                     )
 
 
                 elif st.button(
-                    "🛑 Cancel Research",
+                    ui_text("🛑 Cancel Research", "🛑 取消科研任务"),
                     key="cancel_live_research",
                     type="secondary",
                     use_container_width=True,
@@ -1545,9 +1739,13 @@ elif st.session_state.page == "research":
         elif status == "cancelled":
 
             st.warning(
-                "The local research workflow was cancelled. "
-                "Remote SciencePal cancellation may not yet "
-                "be independently confirmed."
+                ui_text(
+                    "The local research workflow was cancelled. "
+                    "Remote SciencePal cancellation may not yet "
+                    "be independently confirmed.",
+                    "本地科研任务已取消，但尚未独立确认 "
+                    "SciencePal 远程任务是否也已取消。"
+                )
             )
 
 
@@ -1559,17 +1757,26 @@ elif st.session_state.page == "research":
         elif status == "completed":
 
             st.success(
-                "The Multi-Agent Research Workflow has completed."
+                ui_text(
+                    "The Multi-Agent Research Workflow has completed.",
+                    "多智能体科研工作流已完成。"
+                )
             )
 
             st.write(
-                "Research, verification and explanation results "
-                "have been received."
+                ui_text(
+                    "Research, verification and explanation results "
+                    "have been received.",
+                    "已收到科研检索、证据核验和报告解读结果。"
+                )
             )
 
             st.caption(
-                "The final evidence report will be displayed "
-                "after additional output validation is implemented."
+                ui_text(
+                    "The final report will be displayed below "
+                    "if the validation checks pass.",
+                    "如果报告通过验证检查，最终科研报告将在下方显示。"
+                )
             )
 
 
@@ -1609,8 +1816,11 @@ elif st.session_state.page == "research":
         elif status == "no_evidence":
 
             st.info(
-                "The Research Agent did not return studies "
-                "for the next verification stage."
+                ui_text(
+                    "The Research Agent did not return studies "
+                    "for the next verification stage.",
+                    "科研检索智能体未返回可供下一阶段核验的研究文献。"
+                )
             )
 
         # -----------------------------------------------------
@@ -1628,8 +1838,11 @@ elif st.session_state.page == "research":
             )
 
             st.warning(
-                f"The workflow did not complete at "
-                f"the {failed_stage} stage."
+                ui_text(
+                    f"The workflow did not complete at "
+                    f"the {failed_stage} stage.",
+                    f"科研工作流在 {failed_stage} 阶段未完成。"
+                )
             )
 
         # -----------------------------------------------------
@@ -1643,8 +1856,12 @@ elif st.session_state.page == "research":
             )
 
             st.error(
-                "The research workflow encountered an error. "
-                f"Error type: {error_type}."
+                ui_text(
+                    "The research workflow encountered an error. "
+                    f"Error type: {error_type}.",
+                    "科研工作流执行过程中发生错误。"
+                    f"错误类型：{error_type}。"
+                )
             )
 
         # -----------------------------------------------------
@@ -1659,7 +1876,12 @@ elif st.session_state.page == "research":
 
             st.divider()
 
-            st.subheader("Multi-Agent Execution Status")
+            st.subheader(
+                ui_text(
+                    "Multi-Agent Execution Status",
+                    "多智能体执行状态"
+                )
+            )
 
             # Retrieve Agent run records
             run_history = pipeline_result.get("runs", [])
@@ -1669,21 +1891,33 @@ elif st.session_state.page == "research":
                 for run in run_history
             }
 
+
             # Define Agent execution order
             agent_stages = [
-                ("research", "Research Agent"),
-                ("verification", "Verification Agent"),
-                ("explanation", "Explanation Agent"),
+                (
+                    "research",
+                    ui_text("Research Agent", "科研检索智能体")
+                ),
+                (
+                    "verification",
+                    ui_text("Verification Agent", "证据核验智能体")
+                ),
+                (
+                    "explanation",
+                    ui_text("Explanation Agent", "报告解读智能体")
+                ),
             ]
 
-            # Convert execution status into readable labels
+            # Display labels for Agent execution statuses
             status_labels = {
-                "completed": "✅ Completed",
-                "running": "⏳ Running",
-                "asked": "⏸️ Waiting for Input",
-                "failed": "❌ Failed",
-                "stopped": "⏹️ Stopped",
-                "timed_out": "⌛ Timed Out",
+                "completed": ui_text("✅ Completed", "✅ 已完成"),
+                "running": ui_text("⏳ Running", "⏳ 运行中"),
+                "asked": ui_text(
+                    "⏸️ Waiting for Input", "⏸️ 等待输入"
+                ),
+                "failed": ui_text("❌ Failed", "❌ 执行失败"),
+                "stopped": ui_text("⏹️ Stopped", "⏹️ 已停止"),
+                "timed_out": ui_text("⌛ Timed Out", "⌛ 已超时"),
             }
 
             status_data = []
@@ -1696,24 +1930,28 @@ elif st.session_state.page == "research":
 
                 display_status = status_labels.get(
                     agent_status,
-                    "⚪ Not Started"
+                    ui_text("⚪ Not Started", "⚪ 尚未开始")
                     if agent_status == "not_started"
                     else f"⚠️ {agent_status}"
                 )
 
                 status_data.append({
-                    "Agent": agent_name,
-                    "Status": display_status
+                    ui_text("Agent", "智能体"): agent_name,
+                    ui_text("Status", "状态"): display_status
                 })
 
             # Display Agent status table
             st.table(status_data)
 
             st.caption(
-                "Completed means the Agent run finished. "
-                "It does not guarantee that the scientific "
-                "evidence or citations have been independently "
-                "validated."
+                ui_text(
+                    "Completed means the Agent run finished. "
+                    "It does not guarantee that the scientific "
+                    "evidence or citations have been independently "
+                    "validated.",
+                    "已完成仅表示智能体运行结束，"
+                    "不代表科学证据或引用文献已经过独立核实。"
+                )
             )
 
         # -----------------------------------------------------
@@ -1732,8 +1970,11 @@ elif st.session_state.page == "research":
             if not isinstance(report, dict):
 
                 st.error(
-                    "The Explanation Agent did not return "
-                    "a valid research report."
+                    ui_text(
+                        "The Explanation Agent did not return "
+                        "a valid research report.",
+                        "报告解读智能体未返回有效的科研报告。"
+                    )
                 )
 
             elif (
@@ -1747,17 +1988,25 @@ elif st.session_state.page == "research":
             ):
 
                 st.error(
-                    "The research report is incomplete "
-                    "or has an invalid structure."
+                    ui_text(
+                        "The research report is incomplete "
+                        "or has an invalid structure.",
+                        "科研报告内容不完整或数据结构不符合要求。"
+                    )
                 )
 
             else:
 
                 st.warning(
-                    "This report was generated by AI Agents. "
-                    "Individual research claims, publication "
-                    "details and citations require independent "
-                    "verification before being relied upon."
+                    ui_text(
+                        "This report was generated by AI Agents. "
+                        "Individual research claims, publication "
+                        "details and citations require independent "
+                        "verification before being relied upon.",
+                        "本报告由 AI 智能体生成。"
+                        "在采信报告内容之前，应独立核实具体科研结论、"
+                        "论文出版信息及引用文献。"
+                    )
                 )
 
                 # Prepare data for the existing dashboard
@@ -1790,36 +2039,60 @@ elif st.session_state.page == "research":
                 except (ValueError, TypeError, AttributeError):
 
                     st.error(
-                        "Evidence cross-check could not be completed. "
-                        "The research report has not been displayed."
+                        ui_text(
+                            "Evidence cross-check could not be completed. "
+                            "The research report has not been displayed.",
+                            "证据一致性检查未能完成，"
+                            "因此暂未展示科研报告。"
+                        )
                     )
 
                 else:
 
                     st.divider()
 
-                    st.subheader("Evidence Cross-Check")
+                    st.subheader(
+                        ui_text(
+                            "Agent Evidence Consistency Check",
+                            "智能体间证据一致性检查"
+                        )
+                    )
 
                     st.info(
-                        "This check compares study IDs across "
-                        "the Verification and Explanation Agents. "
-                        "It does not independently verify DOI records, "
-                        "publication metadata or research claims."
+                        ui_text(
+                            "This check compares study IDs between the "
+                            "Verification and Explanation Agents. "
+                            "It does not directly query external databases "
+                            "or independently verify DOI records, "
+                            "publication metadata, or research claims.",
+                            "此检查用于比对证据核验智能体与报告解读智能体"
+                            "输出的研究文献 ID 是否一致。"
+                            "该环节不会直接查询外部数据库，"
+                            "也不会独立核验 DOI 记录、出版信息或科研结论。"
+                        )
                     )
 
                     # ---------------------------------------------
                     # Evidence Summary
                     # ---------------------------------------------
 
+
                     st.write(
-                        "**Total References:** "
-                        f"{evidence_audit['total_papers']}"
+                        ui_text(
+                            "**Total References:** ",
+                            "**文献总数：** "
+                        )
+                        + str(evidence_audit["total_papers"])
                     )
 
                     st.write(
-                        "**References marked verified by Agent:** "
-                        f"{evidence_audit['agent_verified_papers']}"
+                        ui_text(
+                            "**References marked verified by Agent:** ",
+                            "**智能体标记为已核验的文献数：** "
+                        )
+                        + str(evidence_audit["agent_verified_papers"])
                     )
+
 
                     # ---------------------------------------------
                     # Paper Verification Status
@@ -1828,6 +2101,7 @@ elif st.session_state.page == "research":
                     evidence_records = evidence_audit.get(
                         "evidence_records", []
                     )
+
 
                     if evidence_records:
 
@@ -1844,23 +2118,30 @@ elif st.session_state.page == "research":
                                 == "agent_reported_verified"
                             ):
 
-                                status_text = (
-                                    "Agent-reported metadata verified"
+                                status_text = ui_text(
+                                    "Agent-reported metadata verified",
+                                    "智能体报告元数据已核验"
                                 )
 
                             else:
 
-                                status_text = "Not confirmed"
+                                status_text = ui_text(
+                                    "Not confirmed",
+                                    "尚未确认"
+                                )
 
                             evidence_table.append({
-                                "Study ID": (
+                                ui_text("Study ID", "文献 ID"): (
                                     record.get("study_id")
-                                    or "Not available"
+                                    or ui_text("Not available", "暂无")
                                 ),
-                                "Paper": record.get(
-                                    "title", "Untitled study"
+                                ui_text("Paper", "文献"): (
+                                    record.get("title")
+                                    or ui_text("Untitled study", "未命名文献")
                                 ),
-                                "Verification Status": status_text,
+                                ui_text(
+                                    "Verification Status", "核验状态"
+                                ): status_text,
                             })
 
                         st.dataframe(
@@ -1869,11 +2150,15 @@ elif st.session_state.page == "research":
                             hide_index=True
                         )
 
+
                     else:
 
                         st.info(
-                            "No research references are available "
-                            "for cross-checking."
+                            ui_text(
+                                "No research references are available "
+                                "for cross-checking.",
+                                "暂无可用于交叉检查的研究文献。"
+                            )
                         )
 
                     # ---------------------------------------------
@@ -1884,20 +2169,33 @@ elif st.session_state.page == "research":
                         "claim_records", []
                     )
 
+
                     if claim_records:
 
-                        st.subheader("Research Claim Assessment")
+                        st.subheader(
+                            ui_text(
+                                "Research Claim Assessment",
+                                "科研论断评估"
+                            )
+                        )
 
                         claim_table = []
 
                         for claim in claim_records:
 
                             claim_table.append({
-                                "Claim ID": claim.get(
-                                    "claim_id", "Not available"
+                                ui_text(
+                                    "Claim ID", "论断 ID"
+                                ): (
+                                    claim.get("claim_id")
+                                    or ui_text("Not available", "暂无")
                                 ),
-                                "Agent-Reported Support": claim.get(
-                                    "support_status", "Not reported"
+                                ui_text(
+                                    "Agent-Reported Support",
+                                    "智能体报告的证据支持情况"
+                                ): (
+                                    claim.get("support_status")
+                                    or ui_text("Not reported", "未报告")
                                 ),
                             })
 
@@ -1908,10 +2206,15 @@ elif st.session_state.page == "research":
                         )
 
                     st.caption(
-                        "Verification statuses and claim assessments "
-                        "are generated by AI Agents. "
-                        "A matching study ID is not proof that "
-                        "a publication exists or supports a claim."
+                        ui_text(
+                            "Verification statuses and claim assessments "
+                            "are generated by AI Agents. "
+                            "A matching study ID is not proof that "
+                            "a publication exists or supports a claim.",
+                            "文献核验状态和科研论断评估由 AI 智能体生成。"
+                            "文献 ID 一致并不能证明该论文真实存在，"
+                            "也不能证明该论文支持相应的科研论断。"
+                        )
                     )
 
                     # ---------------------------------------------
@@ -1922,31 +2225,13 @@ elif st.session_state.page == "research":
 
 
         st.button(
-            "Clear Request",
+            ui_text("Clear Request", "清除科研问题"),
             key="clear_research",
             on_click=clear_research_request,
             disabled=st.session_state.get("research_status") == "running"
         )
 
-        st.divider()
 
-        st.subheader("Research Results Preview")
-
-        st.caption(
-            "Preview the results dashboard using fictional "
-            "demonstration data. No SciencePal API call is made."
-        )
-
-        if st.button(
-            "Preview Demo Research Results →",
-            key="preview_demo_results",
-            width="stretch"
-        ):
-            st.session_state.show_demo_results = True
-            st.rerun()
-
-        if st.session_state.get("show_demo_results", False):
-            render_research_results(DEMO_RESEARCH_RESULT)
 
 
 # =========================================================
