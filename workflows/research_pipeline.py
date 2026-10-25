@@ -360,6 +360,43 @@ async def run_research_pipeline(
         research["events"]
     )
 
+    # -----------------------------------------------------
+    # Safety Interrupt and Insufficient Evidence
+    # -----------------------------------------------------
+
+    research_status = research_data.get("status")
+
+    # Stop the pipeline if an urgent safety concern is detected
+    if research_status == "safety_interrupt":
+
+        safety_message = research_data.get("safety_message")
+
+        if not isinstance(safety_message, str) or not safety_message.strip():
+            safety_message = (
+                "This question may involve an urgent safety concern. "
+                "Please seek immediate help from local emergency services "
+                "or a trusted person who can assist you."
+            )
+
+        return {
+            "status": "safety_interrupt",
+            "stage": "research",
+            "safety_message": safety_message,
+            "research": research_data,
+            "runs": run_history,
+        }
+
+    # Stop if no sufficient research evidence is available
+    if research_status == "insufficient_evidence":
+
+        return {
+            "status": "no_evidence",
+            "stage": "research",
+            "research": research_data,
+            "runs": run_history,
+        }
+
+
     if not isinstance(research_data.get("studies"), list):
         raise ValueError(
             "Research Agent did not return a valid studies list."

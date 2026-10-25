@@ -1288,6 +1288,7 @@ elif st.session_state.page == "research":
         "running",
         "completed",
         "no_evidence",
+        "safety_interrupt",
         "pending_or_failed",
         "cancelled",
         "error",
@@ -1570,6 +1571,36 @@ elif st.session_state.page == "research":
                 "The final evidence report will be displayed "
                 "after additional output validation is implemented."
             )
+
+
+        # -----------------------------------------------------
+        # Safety Interrupt
+        # -----------------------------------------------------
+
+        elif status == "safety_interrupt":
+
+            result = st.session_state.get(
+                "research_pipeline_result"
+            ) or {}
+
+            safety_message = result.get("safety_message")
+
+            if not isinstance(safety_message, str) or not safety_message.strip():
+                safety_message = (
+                    "An urgent safety concern was identified. "
+                    "Please seek immediate assistance from local "
+                    "emergency services or a trusted person."
+                )
+
+            st.error("Safety Alert")
+
+            st.warning(safety_message)
+
+            st.info(
+                "The research workflow was stopped for safety. "
+                "Verification and Explanation Agents were not started."
+            )
+
 
         # -----------------------------------------------------
         # No Evidence
