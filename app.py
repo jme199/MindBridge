@@ -2190,7 +2190,29 @@ elif st.session_state.page == "research":
 
                         claim_table = []
 
+                        # Chinese labels for Agent-reported support
+                        support_labels_zh = {
+                            "supported": "有证据支持",
+                            "partially_supported": "部分证据支持",
+                        }
+
                         for claim in claim_records:
+
+                            support_status = claim.get("support_status")
+
+                            if isinstance(support_status, str) and support_status:
+                                display_support = ui_text(
+                                    support_status,
+                                    support_labels_zh.get(
+                                        support_status,
+                                        support_status
+                                    )
+                                )
+                            else:
+                                display_support = ui_text(
+                                    "Not reported",
+                                    "未报告"
+                                )
 
                             claim_table.append({
                                 ui_text(
@@ -2202,10 +2224,7 @@ elif st.session_state.page == "research":
                                 ui_text(
                                     "Agent-Reported Support",
                                     "智能体报告的证据支持情况"
-                                ): (
-                                    claim.get("support_status")
-                                    or ui_text("Not reported", "未报告")
-                                ),
+                                ): display_support,
                             })
 
                         st.dataframe(

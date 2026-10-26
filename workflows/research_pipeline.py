@@ -14,9 +14,9 @@ from services.sciencepal_client import run_agent
 # =========================================================
 
 AGENT_IDS = {
-    "research": "4598a520-804c-4c73-ad31-79a62f2a73cc",
-    "verification": "c0b45f9c-ced0-4ed8-927c-2683023e507a",
-    "explanation": "b2731f71-b51a-44e1-beda-c5a4b5b035b6",
+    "research": "f49741d9-a997-4dfa-9496-3f19f5011298",
+    "verification": "63f6c4e7-dfbc-4281-a63d-6f1d3ecd8faf",
+    "explanation": "9489e15c-c357-453f-b756-699c8ead74e2",
 }
 
 

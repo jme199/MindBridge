@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from sciencepal import SciencePal
+from services.sciencepal_stream_compat import enable_sciencepal_stream_compat
 
 
 # Store run identifiers locally for debugging.
@@ -49,6 +50,9 @@ async def run_agent(
     The timeout covers initiation, streaming, and polling.
     On timeout or cancellation, attempt to stop the remote run.
     """
+
+    # Enable SDK 0.2.2 streaming compatibility
+    enable_sciencepal_stream_compat()
 
     if not api_key:
         raise ValueError("SciencePal API Key is missing.")
