@@ -1799,13 +1799,22 @@ elif st.session_state.page == "research":
                     "emergency services or a trusted person."
                 )
 
-            st.error("Safety Alert")
+            st.error(
+                ui_text(
+                    "Safety Alert",
+                    "安全提醒"
+                )
+            )
 
             st.warning(safety_message)
 
             st.info(
-                "The research workflow was stopped for safety. "
-                "Verification and Explanation Agents were not started."
+                ui_text(
+                    "The research workflow was stopped for safety. "
+                    "Verification and Explanation Agents were not started.",
+                    "出于安全考虑，科研工作流已停止。"
+                    "证据核验智能体和报告解读智能体均未启动。"
+                )
             )
 
 
