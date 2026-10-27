@@ -189,7 +189,7 @@ MindBridge/
 - **`services/`**: SciencePal SDK integration and response handling.
 - **`workflows/research_pipeline.py`**: Agent IDs, multi-agent orchestration, and Safety Interrupt handling.
 - **`workflows/evidence_validation.py`**: Evidence consistency validation.
-- **`tests/`**: Workflow, safety, and validation tests.
+- **`tests/`**: Automated tests for evidence validation, research pipeline execution, and safety interruption.
 - **`agents/`**: Custom Agent Prompt files.
 - **`skills/`**: Exported Custom Skill packages.
 
