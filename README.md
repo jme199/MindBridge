@@ -152,11 +152,11 @@ The workflow includes:
 ```text
 MindBridge/
 ├── .streamlit/
-│   └── secrets.toml                # Local credentials (not committed)
+│   └── secrets.toml                  # Local credentials (not committed)
 │
 ├── app.py
 ├── research_results.py
-├── scoring.py
+├── scoring.py                        # Not developed as part of this Hackathon project
 ├── requirements.txt
 ├── README.md
 │
@@ -169,6 +169,9 @@ MindBridge/
 │   └── evidence_validation.py
 │
 ├── tests/
+│   ├── test_evidence_validation.py
+│   ├── test_research_pipeline.py
+│   └── test_safety_interrupt.py
 │
 ├── agents/
 │   ├── research_agent_prompt.md
