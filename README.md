@@ -179,8 +179,8 @@ MindBridge/
 │   └── explanation_agent_prompt.md
 │
 └── skills/
-    ├── research_skill.zip
-    └── verification_skill.zip
+    ├── literature-search.zip
+    └── verification-tools.zip
 ```
 
 ### Project Components
