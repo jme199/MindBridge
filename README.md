@@ -433,34 +433,38 @@ Readability and Empathy are evaluated using five-point rating scales.
 
 ### 7.4 Experimental Results
 
-**Status: Dataset refinement and final analysis in progress.**
+**Status: Preliminary evaluation completed.**
 
-The final results will include:
+MindBridge was evaluated against a baseline LLM (Doubao) and an LLM+RAG system (SciSpace) using six test questions and 18 total runs.
 
-- Citation validity and claim support comparisons
-- Domain accuracy analysis
-- Safety evaluation
-- Readability and empathy comparisons
-- Task completion and execution time
-- Overall performance summary and visualizations
+Key findings include:
 
-Results will be added after the final dataset has been verified.
+- **Citation Validity:** MindBridge achieved 85.7%, compared with 41.2% for LLM and 82.1% for LLM+RAG.
+- **Claim Support:** MindBridge achieved 57.1%, compared with 47.1% and 46.4%, respectively.
+- **Domain Accuracy:** MindBridge achieved 75%, compared with 50% for both baselines.
+- **Safety:** MindBridge achieved a 100% weighted safety score and 0% unsafe medical advice rate in the limited test scenarios.
+- **Task Completion:** All three systems achieved 100% completion.
+- **Execution Time:** MindBridge averaged 237 seconds, compared with 27 seconds for LLM and 100.67 seconds for LLM+RAG.
 
-The study is exploratory and does not establish statistical superiority or clinical effectiveness.
+These preliminary results suggest potential improvements in evidence reliability and domain accuracy, but also highlight the increased computational and execution overhead of multi-agent workflows.
 
+**Limitations:** The evaluation involved only six questions, with no repeated trials or ablation studies. The safety assessment covered just two high-risk scenarios. Additionally, the systems used different underlying platforms and models, limiting direct causal attribution of performance differences to the multi-agent architecture.
+
+The findings are exploratory and do not establish statistical superiority, generalizable safety, or clinical effectiveness.
 ---
 
 ## 8. Limitations
 
 MindBridge is an experimental research prototype with several limitations:
 
-- Evidence verification still relies partly on LLM-based semantic judgments.
-- The Python evidence validation mechanism checks consistency rather than independently establishing the factual correctness of all claims.
-- Scientific literature retrieval depends on external database availability and coverage.
-- The multi-agent workflow may introduce additional execution time.
-- Safety testing currently covers a limited number of predefined scenarios.
-- The small experimental dataset limits generalizability.
-- The independent contribution of each Agent has not yet been isolated through ablation studies.
+- **Evidence Reliability:** Verification Agent partly relies on LLM-based semantic judgments, while Python Evidence Validation primarily checks cross-agent consistency rather than independently verifying all scientific claims.
+- **Limited Evaluation:** The experiment included only six questions and 18 runs, without repeated trials or ablation studies. Safety testing covered only two high-risk scenarios.
+- **System Robustness:** Occasional `ValueError` exceptions suggest potential issues with Agent output formats or workflow parsing, although the exact causes remain unconfirmed.
+- **Multilingual Consistency:** Responses occasionally fail to match the user's input language.
+- **Execution Efficiency:** MindBridge averaged 237 seconds per run, compared with 27 seconds for LLM and 100.67 seconds for LLM+RAG.
+- **External Dependencies:** System performance depends on SciencePal and external scientific databases. Differences in underlying models and platforms also limit direct comparisons between systems.
+
+These limitations mean that the preliminary findings cannot establish generalizable safety, statistical superiority, or clinical effectiveness.
 
 ---
 
@@ -468,12 +472,12 @@ MindBridge is an experimental research prototype with several limitations:
 
 Planned improvements include:
 
-- Strengthening automated citation verification and claim-evidence matching
-- Expanding evaluation datasets across additional mental health topics
-- Conducting repeated testing and ablation studies
-- Improving safety interruption coverage and robustness
-- Optimizing multi-agent execution efficiency
-- Evaluating readability and practical usefulness through user feedback
+- **Evidence Verification:** Strengthen Custom Skills, automated citation verification, and claim-evidence matching.
+- **Experimental Evaluation:** Expand test questions, conduct repeated trials and ablation studies, and introduce multiple human evaluators.
+- **Safety Assessment:** Extend high-risk scenarios to improve Safety Interrupt testing coverage.
+- **System Robustness:** Implement stronger schema validation, error logging, exception handling, and appropriate retry mechanisms.
+- **Multilingual Support:** Improve language consistency across Agents and ensure responses follow the user's selected language.
+- **Efficiency and User Experience:** Optimize multi-agent execution to reduce latency and evaluate readability, usefulness, and usability through user feedback.
 
 ---
 
