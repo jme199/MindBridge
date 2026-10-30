@@ -448,9 +448,6 @@ Key findings include:
 
 These preliminary results suggest potential improvements in evidence reliability and domain accuracy, but also highlight the increased computational and execution overhead of multi-agent workflows.
 
-**Limitations:** The evaluation involved only six questions, with no repeated trials or ablation studies. The safety assessment covered just two high-risk scenarios. Additionally, the systems used different underlying platforms and models, limiting direct causal attribution of performance differences to the multi-agent architecture.
-
-The findings are exploratory and do not establish statistical superiority, generalizable safety, or clinical effectiveness.
 ---
 
 ## 8. Limitations
